@@ -2,7 +2,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import glob
-from os import path
+import os
+import sys  
+sys.path.append('/home/wanghejun/Desktop/wanghejun/WeatherShift/Weather-Shift')
 import random
 import numpy as np
 from PIL import Image
@@ -17,57 +19,29 @@ from scipy.special import comb
 from scipy.stats import beta
 np.set_printoptions(suppress=True, precision=4, linewidth=65535)
 import matplotlib.pyplot as plt
-    
-def angle_normal(angle):
-    while angle >= np.pi:
-        angle -= 2*np.pi
-    while angle <= -np.pi:
-        angle += 2*np.pi
-    return angle
-    
-def get_filelist(path, index:int):
-    files = glob.glob(path+'/'+str(index)+'/ipm/*.png')
-    file_names = []
-    for file in files:
-        file_name = file.split('/')[-1][:-4]
-        # check for img pic validity
-        # if cv2.imread(path+'/'+str(index)+'/img/'+file_name+'.png') is None:
-        #     print('not found:',file_name)
-        #     continue
-        # # check for nav pic validity
-        # pic = cv2.imread(path+'/'+str(index)+'/nav/'+file_name+'.png')
-        # if not check_nav_valid(pic):
-        #     continue
 
-        file_names.append(file_name)
-    file_names.sort()
-    return file_names
-
-def spin(xy,deg):
-    x,y = xy
-    rad = deg/180*np.pi
-
-    # rotation equation:
-    # [x] = [cost -sint][x']
-    # [y] = [sint  cost][y']
-    
-    x_ = x*np.cos(rad)-y*np.sin(rad)
-    y_ = x*np.sin(rad)+y*np.cos(rad)
-    # res = ()
-    return [x_,y_]
-
-def sign(x):
-    if x>0:
-        return 1
-    elif x<0:
-        return -1
-    else:
-        return 0
+from utils import get_filelist,read_pcd,print_warning
+from utils.math import angle_normal,spin,sign
 
 
-class CARLADataset(Dataset):
-    def __init__(self, data_index, dataset_path, granularity=1000, eval_mode=False, n_points=1024):
-        self.data_index = data_index
+def collate_fn(data):
+    # print(collate_fn)
+    data.sort(key=lambda x: len(x[0]), reverse=True)  # 按照数据长度降序排序
+    data_list = []
+    lengths = []
+    for d in data:
+        data_list.append(d[0])
+        lengths.append(len(d[0]))
+    padded_data = torch.nn.utils.rnn.pad_sequence(data_list, batch_first=True)  # 对数据进行填充
+    lengths_tensor = torch.tensor(lengths, dtype=torch.long)  # 创建长度张量
+    return padded_data, lengths_tensor
+
+
+class ADUULMDataset(Dataset):
+    def __init__(self, dataset_path='/home/wanghejun/Desktop/wanghejun/WeatherShift/Weather-Shift/data/ADUULM', 
+                granularity=1000, eval_mode=False, n_points=1024,
+                weathers = ['sunny','foggy', 'night', 'rainy', 'snowy', 'snowyfoggyrainy']):
+        # self.data_index = data_index
         self.eval_mode = eval_mode
         self.dataset_path = dataset_path
         self.granularity = granularity
@@ -75,43 +49,68 @@ class CARLADataset(Dataset):
         pointcloud_transforms = [
             # transforms.Resize((img_height, img_width), Image.BICUBIC),
             transforms.ToTensor(),
-            transforms.Normalize((0.5), (0.5))
+            # transforms.Normalize((0.5), (0.5))
         ]
         
         self.pointcloud_transforms = transforms.Compose(pointcloud_transforms)
+        self.weathers = weathers
+        self.npy_list = {}
+        for weather in self.weathers:
+            self.npy_list[weather] = get_filelist(os.path.join(self.dataset_path, 'sorted', weather, '*', 'syn', '*.npy'), only_name=False)
+
+
     
-    def read_cloud(self, index):
-        pass
+    def read_npy(self, path2npy):
+        if os.path.isfile(path2npy):
+            data = np.load(path2npy)
+            print(data)
+            print(path2npy)
+
+            return data
+        else:
+            print('here')
+            print_warning('NOT Found '+path2npy)
+            return None
+    
+    def read_cloud(self, weather, lidar, kind, name):
+        path2npy = os.path.join(self.dataset_path, 'sorted', weather, name, kind, lidar+'.pcd')
+        data = self.read_npy(path2npy)
+        return data
 
     def random_domainness(self, index):
         return torch.randint(0, self.granularity, (1))
 
     def __getitem__(self, index):
         # Read in Cloud
-        cloud = None
+        # print('1')
+        cloud = {}
         domanness = random.randint(0, self.granularity)
-
-        # Transfer Domainness
-        
-        # mirror the inputs
-        mirror = True if random.uniform(0.0, 1.0) > 0.5 else False
-        if mirror:
-            pass
-            #     break
-
-            # except:
-            #     pass
-
-        
-        cloud = self.img_transforms(cloud)        
+        for weather in self.weathers:
+            path2npy = random.choice(self.npy_list[weather])
+            cloud[weather] = self.read_npy(path2npy) # without RGB, point = [x y z i]
+            print(cloud[weather].shape)
+            # print('2'+weather)
             
-        # if not self.eval_mode:
-        #     return {'img_nav': input_img, 'label': label, 'fake_nav_with_img':fake_input_img, 'seg_nav':input_seg}
-        # else:
-        #     return {'img': img, 'nav': nav, 'fake_nav':fake_nav, 'label': label, 'file_name':file_name,'seg':seg}
+            # mirror the inputs
+            for d in [0,1,2,3]:
+                mirror = True if random.uniform(0.0, 1.0) > 0.5 else False
+                if mirror:
+                    cloud[weather][d] = cloud[weather][d]*(-1.0)
+            
+            print(cloud[weather].shape)
+
+            cloud[weather] = self.pointcloud_transforms(cloud[weather])
+
+        if not self.eval_mode:
+            result =  cloud
+        else:
+            result =  cloud
+
+        return result
 
     def __len__(self):
-        return 160000
+        length = [len(self.npy_list[weather]) for weather in self.weathers]
+        return sum(length)
 
 
 if __name__ == '__main__':
@@ -124,39 +123,18 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_name', type=str, default="mu-log_var-test", help='name of the dataset')
-    parser.add_argument('--width', type=int, default=400, help='image width')
-    parser.add_argument('--height', type=int, default=200, help='image height')
-    parser.add_argument('--scale', type=float, default=25., help='longitudinal length')
-    parser.add_argument('--batch_size', type=int, default=1, help='size of the batches')
-    parser.add_argument('--img_step', type=int, default=3, help='RNN input image step')
-    parser.add_argument('--traj_steps', type=int, default=8, help='traj steps')
-    parser.add_argument('--max_dist', type=float, default=25., help='max distance')
-    parser.add_argument('--max_t', type=float, default=3., help='max time')
-    parser.add_argument('--beta1', type=float, default=1, help='beta parameter')
-    parser.add_argument('--beta2', type=float, default=1, help='beta parameter')
     opt = parser.parse_args()
 
-    test_loader = DataLoader(CARLADataset([21], dataset_path='../datacollect/DATASET/CARLA/Segmentation/', eval_mode=True),
-                         batch_size=1, shuffle=False, num_workers=1, pin_memory=True,persistent_workers=True)
 
+    dataset = ADUULMDataset(eval_mode=True)
+    test_loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=1, pin_memory=True, persistent_workers=True, collate_fn=collate_fn)
     cnt = 0
     for i, batch in enumerate(test_loader):
-        # return {'img': img, 'nav': nav, 'fake_nav':fake_nav, 'label': label, 'file_name':file_name,'seg':seg}
-        img = batch['img'].clone().data.numpy().squeeze()*127+128
-        nav = batch['nav'].clone().data.numpy().squeeze()*127+128
-        
-        img = np.transpose(img,(1,2,0))
-        nav = np.transpose(nav,(1,2,0))
+        print('here')
 
-        # print(img.shape)
-        print('file_name',batch['file_name'])
-        # img = Image.fromarray(np.transpose(img, (2, 1, 0)).astype('uint8')).convert("RGB")
-        # nav = Image.fromarray(np.transpose(nav, (2, 1, 0)).astype('uint8')).convert("RGB")
-
-        cv2.imwrite('./img_%d.jpg'%cnt,img)
-        cv2.imwrite('./nav_%d.jpg'%cnt,nav)
-
-
+        weathers = ['sunny','foggy', 'night', 'rainy', 'snowy', 'snowyfoggyrainy']
+        for weather in weathers:
+            print('weather:', batch[weather].shape)
 
         cnt+=1
         if cnt >= 5:
