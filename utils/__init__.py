@@ -22,6 +22,10 @@ def get_filelist(path,only_name=True):
     file_names.sort()
     return file_names
 
+def deepcopy_generator(original_generator):
+    for item in original_generator:
+        yield item
+
 def read_pcd(pcd_file):
     # pcd --> numpy.ndarrray
     # [...,...,[x,y,z,i,rgb],...,...] dtype = float
