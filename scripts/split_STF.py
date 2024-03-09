@@ -6,8 +6,6 @@ from pathlib import Path
 import argparse
 import numpy as np
 from tqdm import tqdm
-from utils import deepcopy_generator
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--test_split', type=float, default=0.1, help='rate of test file')

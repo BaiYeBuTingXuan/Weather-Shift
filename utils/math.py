@@ -1,6 +1,3 @@
-import imp
-
-
 import numpy as np
 
 def angle_normal(angle):
@@ -30,3 +27,43 @@ def sign(x):
         return -1
     else:
         return 0
+    
+def Cart2Cylin(x,y,z): # Cartesian(x,y,z) to Cylinder(d,theta,h)
+    distance = np.sqrt(np.square(x)+ np.square(y))  
+    theta = np.arctan2(x,y)
+    height = z
+
+    return np.stack([height,theta,distance], axis=0).transpose()
+
+
+
+def Cart2Spher(x, y, z):
+    '''
+    r is the radial distance from the origin,
+    θ is the polar angle (angle in the xy-plane),
+    φ is the azimuthal angle (angle from the positive z-axis).
+    '''
+    distance = np.sqrt(np.square(x)+ np.square(y)) 
+    phi = np.arccos(z / distance)
+    theta = np.arctan2(y, x)
+
+    return np.stack([phi,theta,distance], axis=0).transpose()
+
+
+
+def approx_equal(a, b, epsilon=5e-3):
+    """
+    判断两个浮点数近似相等的函数
+
+    Parameters:
+    a (float): 第一个浮点数
+    b (float): 第二个浮点数
+    epsilon (float, optional): 允许的误差范围，默认为1e-9
+
+    Returns:
+    bool: 如果两个浮点数在给定的误差范围内近似相等，则返回True；否则返回False
+    """
+    return abs(a - b) <= epsilon
+
+
+

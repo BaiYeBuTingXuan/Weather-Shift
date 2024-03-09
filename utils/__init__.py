@@ -26,42 +26,19 @@ def deepcopy_generator(original_generator):
     for item in original_generator:
         yield item
 
-def read_pcd(pcd_file):
-    # pcd --> numpy.ndarrray
-    # [...,...,[x,y,z,i,rgb],...,...] dtype = float
-    line_number = 0
-    pointcloud = []
-    # open file
-    if (os.path.isfile(pcd_file)):
-        image_file = open(pcd_file,"r")
-        for line in image_file:
-            line_number = line_number + 1
-            if line_number > 11: # Point: x,y,z,rgb=0,i
-                try:
-                    buff = line.split()
-
-                    x = float(buff[0])
-                    y = float(buff[1])
-                    z = float(buff[2])
-                    # rgb = float(buff[3])
-                    # print(dec2rgb(rgb))
-                    # i = float(buff[4])
-                    
-                    point = [x,y,z] 
-                    pointcloud.append(point)
-                except IndexError:
-                    print('IndexError')
-                    print(pcd_file)
-
-
-    pointcloud = np.array(pointcloud)
-
-    return pointcloud # as ndarray n*5 [x,y,z,i,rgb]
 
 def print_warning(message):
     print('\033[93m [WARNING]' + message + '\033[0m')
 
 
+def ndarray2img(array:np.array)->np.array:
+    assert len(array.shape) == 3 # Only for 3-Dimension Tensor
+    assert array.shape[2] == 3 or array.shape[2] == 1 # Only for RGB or Gray img that 3rd dimension == 3 or 1
+
+    array = ((array - np.min(array, axis=(0, 1))) / np.max(array, axis=(0, 1))) * 255
+    img = array.astype(np.uint8)
+
+    return img
 
 # def dec2rgb(dec):
 #   x = int(dec)

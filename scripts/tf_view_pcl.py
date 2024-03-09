@@ -10,7 +10,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 sys.path.append('/home/wanghejun/Desktop/wanghejun/WeatherShift/Weather-Shift')
 
-from utils import read_pcd
+from utils.point_cloud import read_pcd
 
 parser = argparse.ArgumentParser(description='这是一个示例程序')
 
