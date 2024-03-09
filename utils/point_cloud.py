@@ -76,7 +76,9 @@ def lin2ham(pc:np.array)->np.array:
 def directional_voxelization(pc:np.array, phi_n:int=256, theta_n:int=512, is_debug:bool=False) ->np.array:
     '''
     input: n*[x,y,z,i]
+
     output: phi_n * theta_n * 3
+        per pixel : [number of points, average distance of points, average reflected intensity of points]
 
     Phi : Angle between Point with Z-Positive [0, PI]
     theta : Angle on XY-Plane (-PI, PI]
@@ -105,7 +107,7 @@ def directional_voxelization(pc:np.array, phi_n:int=256, theta_n:int=512, is_deb
         i = int((phi-min_bound[0]) / resolution[0])
         j = int((theta-min_bound[1]) / resolution[1])
         
-        voxels[i, j, 0] = voxels[i, j, 0] + 1
+        voxels[i, j, 0] = voxels[i, j, 0] + 1 # number of point
         voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + distance ) / voxels[i, j, 0]  # average distance
         voxels[i, j, 2] = (voxels[i, j, 2] * (voxels[i, j, 0] - 1) + intensity ) / voxels[i, j, 0] # average intensity
     
