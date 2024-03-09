@@ -73,7 +73,7 @@ def lin2ham(pc:np.array)->np.array:
     return ham, heights, angles, number_of_not_zero
 
 
-def directional_voxelization(pc:np.array, phi_n:int=256, theta_n:int=512, is_debug:bool=False) ->np.array:
+def directional_voxelization(pc:np.array, phi_n:int=256, theta_n:int=512, is_debug:bool=False) ->np.array: #  TODO: definite the bound of phi
     '''
     input: n*[x,y,z,i]
 
