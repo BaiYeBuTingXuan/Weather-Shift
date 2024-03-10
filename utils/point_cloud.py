@@ -73,7 +73,7 @@ def lin2ham(pc:np.array)->np.array:
     return ham, heights, angles, number_of_not_zero
 
 
-def directional_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_debug:bool=False) ->np.array: #  TODO: definite the bound of latitude
+def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_debug:bool=False) ->np.array: #  TODO: definite the bound of latitude
     '''
     input: n*[x,y,z,i]
 
@@ -185,7 +185,7 @@ if __name__ == '__main__':
         for _, file in bar:
             pc = read_pcd(file)
             # print(pc.shape)
-            dict = directional_voxelization(pc, HEIGHT, WEIGHT, True)
+            dict = globe_voxelization(pc, HEIGHT, WEIGHT, True)
 
             frame = dict['voxels']
             videowriter.write(frame)
