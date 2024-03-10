@@ -7,10 +7,10 @@ import numpy as np
 from pathlib import Path
 
 from utils import print_warning,ndarray2img
-from utils.math import Cart2Cylin,approx_equal,Cart2Spher
+from utils.math import Cart2Cylin,approx_equal,Cart2Spher,PI
 
 import cv2
-
+from tqdm import tqdm
 import itertools
 
 def lin2ham(pc:np.array)->np.array:
@@ -24,7 +24,7 @@ def lin2ham(pc:np.array)->np.array:
     ...
     ]
     '''
-    # [x,y,z,i] ==> [h,theta,d,i]
+    # [x,y,z,i] ==> [h,longitude,d,i]
     # pc[:,0:3] = Cart2Cylin(x=pc[:,0],y=pc[:,1],z=pc[:,2]) 
     pc[:,0:3] = Cart2Cylin(x=pc[:,0],y=pc[:,1],z=pc[:,2]) 
 
@@ -73,39 +73,39 @@ def lin2ham(pc:np.array)->np.array:
     return ham, heights, angles, number_of_not_zero
 
 
-def directional_voxelization(pc:np.array, phi_n:int=256, theta_n:int=512, is_debug:bool=False) ->np.array: #  TODO: definite the bound of phi
+def directional_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_debug:bool=False) ->np.array: #  TODO: definite the bound of latitude
     '''
     input: n*[x,y,z,i]
 
-    output: phi_n * theta_n * 3
+    output: latitude_n * longitude_n * 3
         per pixel : [number of points, average distance of points, average reflected intensity of points]
 
-    Phi : Angle between Point with Z-Positive [0, PI]
-    theta : Angle on XY-Plane (-PI, PI]
+    latitude : Angle between Point with Z-Positive [-PI/2, PI/2]
+    longitude : Angle on XY-Plane (-PI, PI]
 
     '''
     pc[:,0:3] = Cart2Spher(x=pc[:,0],y=pc[:,1],z=pc[:,2])
-    angles = pc[:, 0:2]
+    # angles = pc[:, 0:2]
 
-    min_bound = np.min(angles, axis=0)
-    max_bound = np.max(angles, axis=0)
+    min_bound = np.array([10/180*PI, -PI])
+    max_bound = np.array([-30/180*PI, PI])
 
-    voxels = np.zeros((phi_n, theta_n, 3), dtype=float)
+    voxels = np.zeros((latitude_n, longitude_n, 3), dtype=float)
 
-    resolution = (max_bound - min_bound)/np.array([phi_n-1, theta_n-1], dtype=float)
+    resolution = (max_bound - min_bound)/np.array([latitude_n-1, longitude_n-1], dtype=float)
 
     # print(min_bound)
     # print(max_bound)
     # print(resolution)
 
     for p in pc:
-        phi = p[0]
-        theta = p[1]
+        latitude = p[0]
+        longitude = p[1]
         distance = p[2]
         intensity = p[3]
         # print(p)
-        i = int((phi-min_bound[0]) / resolution[0])
-        j = int((theta-min_bound[1]) / resolution[1])
+        i = int((latitude-min_bound[0]) / resolution[0])
+        j = int((longitude-min_bound[1]) / resolution[1])
         
         voxels[i, j, 0] = voxels[i, j, 0] + 1 # number of point
         voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + distance ) / voxels[i, j, 0]  # average distance
@@ -164,24 +164,40 @@ def read_pcd(file, dataset = 'SeeingThroughFog' ): # TODO：to STF
 
 
 if __name__ == '__main__':
-    path = Path('I:\Datasets\DENSE\SeeingThroughFog\lidar_hdl64_strongest')/'2018-02-03_20-48-35_00400.bin'
-    pc = read_pcd(path)
-    print(pc.shape)
-    total = pc.shape[0]
-    v = directional_voxelization(pc, 256, 512)
-    print(v.shape)
-    np.min(v,axis=2)
+    PATH_TO_LIDAR = Path('I:\Datasets\DENSE\SeeingThroughFog\lidar_hdl64_strongest')
 
-    v = ndarray2img(v)
-    # v = ((v - np.min(v, axis=(0, 1))) / np.max(v, axis=(0, 1))) * 255
-    # v = v.astype(np.uint8)
+    STF_PATH = Path('I:\Datasets\DENSE\SeeingThroughFog')
 
-    # 显示图片
-    cv2.imshow('voxel', v)
+    WEIGHT,HEIGHT = 512, 256
 
-    # 等待按键事件，关闭窗口
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    videowriter = cv2.VideoWriter('./point_cloud_video.mp4', fourcc, fps = 20, frameSize=(WEIGHT, HEIGHT))
+
+    if STF_PATH.is_dir():
+        files = list(STF_PATH.joinpath('lidar_hdl64_strongest').glob('*.bin'))
+    else:
+        print_warning('Not Found '+str(STF_PATH))
+        sys.exit()
+
+    bar = enumerate(files)
+    bar = tqdm(bar, total=len(files))
+    try:
+        for _, file in bar:
+            pc = read_pcd(file)
+            # print(pc.shape)
+            dict = directional_voxelization(pc, HEIGHT, WEIGHT, True)
+
+            frame = dict['voxels']
+            videowriter.write(frame)
+
+    except KeyboardInterrupt:
+        pass
+
+    videowriter.release()
+    
+
+    
+
 
 
 

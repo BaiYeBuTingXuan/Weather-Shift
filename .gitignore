@@ -4,3 +4,8 @@
 
 # dataset
 data/
+
+# Big File
+*.zip
+*.mp4
+*.avi

@@ -1,5 +1,7 @@
 import numpy as np
 
+PI = 3.14159265359
+
 def angle_normal(angle):
     while angle >= np.pi:
         angle -= 2*np.pi
@@ -39,15 +41,15 @@ def Cart2Cylin(x,y,z): # Cartesian(x,y,z) to Cylinder(d,theta,h)
 
 def Cart2Spher(x, y, z):
     '''
-    r is the radial distance from the origin,
-    θ is the polar angle (angle in the xy-plane),
-    φ is the azimuthal angle (angle from the positive z-axis).
+    radius is the radial distance from the origin,
+    longitude θ is the polar angle (angle in the xy-plane),
+    latitude φ is the azimuthal angle (angle from the positive z-axis).
     '''
-    distance = np.sqrt(np.square(x)+ np.square(y)) 
-    phi = np.arccos(z / distance)
-    theta = np.arctan2(y, x)
+    radius = np.sqrt(np.square(x)+ np.square(y)) 
+    latitude = np.pi/2 - np.arccos(z / radius)
+    longitude = np.arctan2(y, x)
 
-    return np.stack([phi,theta,distance], axis=0).transpose()
+    return np.stack([latitude,longitude,radius], axis=0).transpose()
 
 
 
