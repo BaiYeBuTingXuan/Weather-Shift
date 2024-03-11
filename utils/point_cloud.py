@@ -115,6 +115,7 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, lat
 
 def anti_globe_voxelization(globe:np.array, latitude_n:int=256, longitude_n:int=512, latitude_bound=[-30/180*PI,10/108*PI], longitude_bound=[-PI,PI])->np.array:
     '''
+    TODO: Never Debug
     input: globe latitude_n * longitude_n * 3
         per pixel : [number of points, average radius of points, average reflected reflectance of points]
 
