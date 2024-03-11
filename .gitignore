@@ -2,6 +2,9 @@
 *.code-workspace
 .history/
 
+# temporary directory
+temp/
+
 # dataset
 data/
 

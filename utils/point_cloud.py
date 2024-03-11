@@ -92,7 +92,7 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
 
     voxels = np.zeros((latitude_n, longitude_n, 3), dtype=float)
 
-    resolution = (max_bound - min_bound)/np.array([latitude_n-1, longitude_n-1], dtype=float)
+    resolution = (max_bound - min_bound)/np.array([latitude_n, longitude_n], dtype=float)
 
     # print(min_bound)
     # print(max_bound)
@@ -106,7 +106,10 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
         # print(p)
         i = int((latitude-min_bound[0]) / resolution[0])
         j = int((longitude-min_bound[1]) / resolution[1])
-        
+
+        i = min(latitude_n-1, i)
+        j = min(longitude_n-1, j)
+
         voxels[i, j, 0] = voxels[i, j, 0] + 1 # number of point
         voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + distance ) / voxels[i, j, 0]  # average distance
         voxels[i, j, 2] = (voxels[i, j, 2] * (voxels[i, j, 0] - 1) + intensity ) / voxels[i, j, 0] # average intensity
@@ -168,10 +171,12 @@ if __name__ == '__main__':
 
     STF_PATH = Path('I:\Datasets\DENSE\SeeingThroughFog')
 
-    WEIGHT,HEIGHT = 512, 256
+    WEIGHT,HEIGHT = 1024, 512
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    videowriter = cv2.VideoWriter('./point_cloud_video.mp4', fourcc, fps = 20, frameSize=(WEIGHT, HEIGHT))
+
+    Path('./temp/').mkdir( exist_ok = True)
+    videowriter = cv2.VideoWriter('./temp/point_cloud_video.mp4', fourcc, fps = 20, frameSize=(WEIGHT, HEIGHT))
 
     if STF_PATH.is_dir():
         files = list(STF_PATH.joinpath('lidar_hdl64_strongest').glob('*.bin'))
