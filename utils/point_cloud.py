@@ -78,7 +78,7 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
     input: n*[x,y,z,i]
 
     output: latitude_n * longitude_n * 3
-        per pixel : [number of points, average radius of points, average reflected intensity of points]
+        per pixel : [number of points, average radius of points, average reflected reflectance of points]
 
     latitude : Angle between Point with Z-Positive [-PI/2, PI/2]
     longitude : Angle on XY-Plane (-PI, PI]
@@ -101,7 +101,7 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
         latitude = p[0]
         longitude = p[1]
         radius = p[2]
-        intensity = p[3]
+        reflectance = p[3]
         # print(p)
         i = int((latitude-min_bound[0]) / resolution[0])
         j = int((longitude-min_bound[1]) / resolution[1])
@@ -111,13 +111,13 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
 
         voxels[i, j, 0] = voxels[i, j, 0] + 1 # number of point
         voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + radius ) / voxels[i, j, 0]  # average radius
-        voxels[i, j, 2] = (voxels[i, j, 2] * (voxels[i, j, 0] - 1) + intensity ) / voxels[i, j, 0] # average intensity
+        voxels[i, j, 2] = (voxels[i, j, 2] * (voxels[i, j, 0] - 1) + reflectance ) / voxels[i, j, 0] # average reflectance
 
         r_list.append(p[2])
         i_list.append(p[3])
     
     if is_debug:
-        return {'voxels': voxels, 'radius': r_list, 'intensity': i_list}
+        return {'voxels': voxels, 'radius': r_list, 'reflectance': i_list}
     else:
         return voxels
 
@@ -176,7 +176,7 @@ if __name__ == '__main__':
     WEIGHT,HEIGHT = 1024, 512
 
     radius = []
-    intensity = []
+    reflectance = []
 
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
@@ -191,7 +191,7 @@ if __name__ == '__main__':
         sys.exit()
 
     radius = []
-    intensity = []
+    reflectance = []
 
     bar = enumerate(files)
     bar = tqdm(bar, desc="Processing", total=len(files))
@@ -206,7 +206,7 @@ if __name__ == '__main__':
             videowriter.write(frame)
 
             radius = radius + dict['radius']
-            intensity = intensity + dict['intensity']
+            reflectance = reflectance + dict['reflectance']
 
     except KeyboardInterrupt:
         pass
@@ -217,9 +217,9 @@ if __name__ == '__main__':
     print(np.mean(radius))
     print(np.std(radius))
 
-    print('intensity')
-    print(np.mean(intensity))
-    print(np.std(intensity))
+    print('reflectance')
+    print(np.mean(reflectance))
+    print(np.std(reflectance))
 
     
 
