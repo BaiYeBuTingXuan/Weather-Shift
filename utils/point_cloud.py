@@ -78,7 +78,7 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
     input: n*[x,y,z,i]
 
     output: latitude_n * longitude_n * 3
-        per pixel : [number of points, average distance of points, average reflected intensity of points]
+        per pixel : [number of points, average radius of points, average reflected intensity of points]
 
     latitude : Angle between Point with Z-Positive [-PI/2, PI/2]
     longitude : Angle on XY-Plane (-PI, PI]
@@ -94,14 +94,13 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
 
     resolution = (max_bound - min_bound)/np.array([latitude_n, longitude_n], dtype=float)
 
-    # print(min_bound)
-    # print(max_bound)
-    # print(resolution)
+    r_list= []
+    i_list = []
 
     for p in pc:
         latitude = p[0]
         longitude = p[1]
-        distance = p[2]
+        radius = p[2]
         intensity = p[3]
         # print(p)
         i = int((latitude-min_bound[0]) / resolution[0])
@@ -111,11 +110,14 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
         j = min(longitude_n-1, j)
 
         voxels[i, j, 0] = voxels[i, j, 0] + 1 # number of point
-        voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + distance ) / voxels[i, j, 0]  # average distance
+        voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + radius ) / voxels[i, j, 0]  # average radius
         voxels[i, j, 2] = (voxels[i, j, 2] * (voxels[i, j, 0] - 1) + intensity ) / voxels[i, j, 0] # average intensity
+
+        r_list.append(p[2])
+        i_list.append(p[3])
     
     if is_debug:
-        return {'voxels': voxels, 'min_bound': min_bound, 'max_bound': max_bound, 'resolution': resolution}
+        return {'voxels': voxels, 'radius': r_list, 'intensity': i_list}
     else:
         return voxels
 
@@ -173,6 +175,9 @@ if __name__ == '__main__':
 
     WEIGHT,HEIGHT = 1024, 512
 
+    radius = []
+    intensity = []
+
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
     Path('./temp/').mkdir( exist_ok = True)
@@ -180,14 +185,19 @@ if __name__ == '__main__':
 
     if STF_PATH.is_dir():
         files = list(STF_PATH.joinpath('lidar_hdl64_strongest').glob('*.bin'))
+        files.sort(key=str)
     else:
         print_warning('Not Found '+str(STF_PATH))
         sys.exit()
 
+    radius = []
+    intensity = []
+
     bar = enumerate(files)
-    bar = tqdm(bar, total=len(files))
+    bar = tqdm(bar, desc="Processing", total=len(files))
     try:
         for _, file in bar:
+            bar.desc = str(file.stem)
             pc = read_pcd(file)
             # print(pc.shape)
             dict = globe_voxelization(pc, HEIGHT, WEIGHT, True)
@@ -195,10 +205,22 @@ if __name__ == '__main__':
             frame = dict['voxels']
             videowriter.write(frame)
 
+            radius = radius + dict['radius']
+            intensity = intensity + dict['intensity']
+
     except KeyboardInterrupt:
         pass
 
     videowriter.release()
+
+    print('radius')
+    print(np.mean(radius))
+    print(np.std(radius))
+
+    print('intensity')
+    print(np.mean(intensity))
+    print(np.std(intensity))
+
     
 
     
