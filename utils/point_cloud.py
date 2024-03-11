@@ -94,9 +94,6 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
 
     resolution = (max_bound - min_bound)/np.array([latitude_n, longitude_n], dtype=float)
 
-    r_list= []
-    i_list = []
-
     for p in pc:
         latitude = p[0]
         longitude = p[1]
@@ -112,12 +109,9 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
         voxels[i, j, 0] = voxels[i, j, 0] + 1 # number of point
         voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + radius ) / voxels[i, j, 0]  # average radius
         voxels[i, j, 2] = (voxels[i, j, 2] * (voxels[i, j, 0] - 1) + reflectance ) / voxels[i, j, 0] # average reflectance
-
-        r_list.append(p[2])
-        i_list.append(p[3])
     
     if is_debug:
-        return {'voxels': voxels, 'radius': r_list, 'reflectance': i_list}
+        return {'voxels': voxels}
     else:
         return voxels
 
@@ -204,9 +198,6 @@ if __name__ == '__main__':
 
             frame = dict['voxels']
             videowriter.write(frame)
-
-            radius = radius + dict['radius']
-            reflectance = reflectance + dict['reflectance']
 
     except KeyboardInterrupt:
         pass

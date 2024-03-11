@@ -31,11 +31,11 @@ def sign(x):
         return 0
     
 def Cart2Cylin(x,y,z): # Cartesian(x,y,z) to Cylinder(d,theta,h)
-    distance = np.sqrt(np.square(x)+ np.square(y))  
-    theta = np.arctan2(x,y)
+    radius = np.sqrt(np.square(x)+ np.square(y))  
+    longitude = np.arctan2(x,y)
     height = z
 
-    return np.stack([height,theta,distance], axis=0).transpose()
+    return np.stack([height,longitude,radius], axis=0).transpose()
 
 
 
