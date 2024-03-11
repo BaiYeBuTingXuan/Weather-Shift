@@ -73,9 +73,9 @@ def lin2ham(pc:np.array)->np.array:
     return ham, heights, angles, number_of_not_zero
 
 
-def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_debug:bool=False) ->np.array: #  TODO: definite the bound of latitude
+def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, latitude_bound=[-30/180*PI,10/108*PI], longitude_bound=[-PI,PI]) ->np.array:
     '''
-    input: n*[x,y,z,i]
+    input: points cloud n*[x,y,z,i]
 
     output: latitude_n * longitude_n * 3
         per pixel : [number of points, average radius of points, average reflected reflectance of points]
@@ -87,8 +87,8 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
     pc[:,0:3] = Cart2Spher(x=pc[:,0],y=pc[:,1],z=pc[:,2])
     # angles = pc[:, 0:2]
 
-    min_bound = np.array([10/180*PI, -PI])
-    max_bound = np.array([-30/180*PI, PI])
+    min_bound = np.array([latitude_bound[0], longitude_bound[0]])
+    max_bound = np.array([latitude_bound[1], longitude_bound[1]])
 
     voxels = np.zeros((latitude_n, longitude_n, 3), dtype=float)
 
@@ -110,10 +110,39 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, is_
         voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + radius ) / voxels[i, j, 0]  # average radius
         voxels[i, j, 2] = (voxels[i, j, 2] * (voxels[i, j, 0] - 1) + reflectance ) / voxels[i, j, 0] # average reflectance
     
-    if is_debug:
-        return {'voxels': voxels}
-    else:
-        return voxels
+    return voxels
+    
+
+def anti_globe_voxelization(globe:np.array, latitude_n:int=256, longitude_n:int=512, latitude_bound=[-30/180*PI,10/108*PI], longitude_bound=[-PI,PI])->np.array:
+    '''
+    input: globe latitude_n * longitude_n * 3
+        per pixel : [number of points, average radius of points, average reflected reflectance of points]
+
+    output: 
+            points cloud n*[x,y,z,i]
+
+    latitude : Angle between Point with Z-Positive [-PI/2, PI/2]
+    longitude : Angle on XY-Plane (-PI, PI]
+
+    '''
+    latitude_n, longitude_n, _= globe.shape
+    pc = []
+
+    min_bound = np.array([latitude_bound[0], longitude_bound[0]])
+    max_bound = np.array([latitude_bound[1], longitude_bound[1]])
+    resolution = (max_bound - min_bound)/np.array([latitude_n, longitude_n], dtype=float)
+
+    for i,j in itertools.product(range(latitude_n),range(longitude_n)):
+        latitude = min_bound[0] + i * resolution[0]
+        longitude = min_bound[1] + j * resolution[1]
+        radius = globe[i,j,1]
+        reflectance = globe[i,j,2]
+        point = np.array([latitude,longitude,radius,reflectance], dtype=float)
+        pc.append(point)
+
+    pc = np.stack(pc, axis=0)
+    return pc
+
 
 
 def read_pcd(file, dataset = 'SeeingThroughFog' ): # TODO：to STF
@@ -169,13 +198,8 @@ if __name__ == '__main__':
 
     WEIGHT,HEIGHT = 1024, 512
 
-    radius = []
-    reflectance = []
-
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-
-    Path('./temp/').mkdir( exist_ok = True)
-    videowriter = cv2.VideoWriter('./temp/point_cloud_video.mp4', fourcc, fps = 20, frameSize=(WEIGHT, HEIGHT))
+    Path('./temp/').mkdir(exist_ok = True)
+    videowriter = cv2.VideoWriter('./temp/point_cloud_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps = 10, frameSize=(WEIGHT, HEIGHT))
 
     if STF_PATH.is_dir():
         files = list(STF_PATH.joinpath('lidar_hdl64_strongest').glob('*.bin'))
@@ -184,9 +208,6 @@ if __name__ == '__main__':
         print_warning('Not Found '+str(STF_PATH))
         sys.exit()
 
-    radius = []
-    reflectance = []
-
     bar = enumerate(files)
     bar = tqdm(bar, desc="Processing", total=len(files))
     try:
@@ -194,24 +215,19 @@ if __name__ == '__main__':
             bar.desc = str(file.stem)
             pc = read_pcd(file)
             # print(pc.shape)
-            dict = globe_voxelization(pc, HEIGHT, WEIGHT, True)
+            dict = globe_voxelization(pc, HEIGHT, WEIGHT)
 
             frame = dict['voxels']
+            frame = ndarray2img(frame)
+            cv2.putText(img=frame, text=file.stem, org=(0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1.0, color=(255, 255, 255), thickness=2)
             videowriter.write(frame)
+            # cv2.imshow('voxels', frame)
+            # cv2.waitKey(0)
 
     except KeyboardInterrupt:
         pass
 
     videowriter.release()
-
-    print('radius')
-    print(np.mean(radius))
-    print(np.std(radius))
-
-    print('reflectance')
-    print(np.mean(reflectance))
-    print(np.std(reflectance))
-
     
 
     
