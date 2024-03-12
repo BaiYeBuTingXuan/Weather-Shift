@@ -22,6 +22,16 @@ import matplotlib.pyplot as plt
 
 from utils import get_filelist,read_pcd,print_warning
 from utils.math import angle_normal,spin,sign
+from utils.point_cloud import globe_voxelization, read_pcd
+
+from pathlib import Path
+import itertools
+
+# parser = argparse.ArgumentParser()
+# parser.add_argument('--test_split', type=float, default=0.1, help='rate of test file')
+# parser.add_argument('--valid_split', type=float, default=0.1, help='rate of validation file')
+# parser.add_argument('--random_seed', type=int, default=6, help='random seed')
+# arg = parser.parse_args()
 
 
 def collate_fn(data):
@@ -111,6 +121,81 @@ class ADUULMDataset(Dataset):
     def __len__(self):
         length = [len(self.npy_list[weather]) for weather in self.weathers]
         return sum(length)
+
+
+class SeeThroughFogDataset(Dataset): #TODO: Undo almost anything
+    def __init__(self, 
+                dataset_path='I:\Datasets\DENSE\SeeingThroughFog', 
+                splits_path='.\splits', 
+                mode = 'train',
+                globe_height = 256,
+                globe_width = 512,
+                weathers = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night'],
+                lidars = ['lidar_hdl64_strongest' ,'lidar_vlp32_strongest']):
+        # self.data_index = data_index
+        self.mode = mode
+        self.dataset_path = dataset_path
+        self.weathers = weathers
+        self.lidars = lidars
+        self.mode = mode
+
+        self.weather_categories = len(weathers)
+
+        globe_transforms = [
+                transforms.Resize((globe_height, globe_width), Image.BICUBIC),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5), (0.5))
+            ]
+        if mode == 'train':
+            globe_transforms.append(transforms.RandomHorizontalFlip(p=0.5))
+        else: # Test or Validation
+            pass
+        
+        self.globe_transforms = transforms.Compose(globe_transforms)
+
+        self.npy_list = {} # self.bin_list[one of lidars][one of weathers] = one of names of globe in *.npy
+        for lidar,weather in itertools.product(lidars, weathers):
+            with open(Path(splits_path).joinpath(mode).joinpath(weather+'.txt')) as f:
+                names = {}
+                names[weather] = [line.strip().replace(',', '_') for line in f.readlines()]
+                self.npy_list[lidar] = names # No \n
+
+    def read_cloud(self, path):
+        cloud = read_pcd(path)
+        return cloud
+
+    def read_globe(self, path):
+        if path.is_file():
+            globe = np.fromfile(path, dtype=np.float32)
+        else:
+            print_warning('Not Found: '+ path)
+            globe = None
+        return globe
+
+    def __getitem__(self, index):
+        # Read in Globe
+        lidar = random.choice(self.lidars) # choice a lidar form lidars(LIST)
+
+        weather_index = random.choice(range(self.weather_categories))
+        
+        globe_name = random.choice(self.npy_list[lidar][self.weathers[weather_index]])
+        globe = self.read_globe(Path(self.dataset_path).joinpath(lidar).joinpath(globe_name +'.npy'))
+
+        # To Tensor
+        weather= torch.nn.functional.one_hot(weather_index, num_classes=self.weather_categories).type(torch.float32)
+        globe = self.globe_transforms(globe)
+
+        # TODO: labels for Object Detection
+        if self.mode == 'train':
+            return {'weather': weather, 'globe': globe}
+        else: # Test or Validation
+            return {'weather': weather, 'globe': globe, 'lidar': lidar, 'globe_name': globe_name, 'weather_name': self.weathers[weather_index], 'weather_index': weather_index}
+
+    def __len__(self):
+        length = 0
+        for lidar,weather in itertools.product(self.lidars, self.weathers):
+            length = length + len(self.npy_list[lidar][weather])
+        return length
 
 
 if __name__ == '__main__':

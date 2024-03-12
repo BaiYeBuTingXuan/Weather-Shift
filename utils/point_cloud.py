@@ -216,9 +216,7 @@ if __name__ == '__main__':
             bar.desc = str(file.stem)
             pc = read_pcd(file)
             # print(pc.shape)
-            dict = globe_voxelization(pc, HEIGHT, WEIGHT)
-
-            frame = dict['voxels']
+            frame = globe_voxelization(pc, HEIGHT, WEIGHT)
             frame = ndarray2img(frame)
             cv2.putText(img=frame, text=file.stem, org=(0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1.0, color=(255, 255, 255), thickness=2)
             videowriter.write(frame)

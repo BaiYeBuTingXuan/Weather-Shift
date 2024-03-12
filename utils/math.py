@@ -17,9 +17,9 @@ def angle_normal(angle):
 
 def spin(xy, deg, deg_OR_rad):
     x,y = xy
-    if deg_OR_rad = 'deg':
+    if deg_OR_rad == 'deg':
         rad = deg/180*np.pi
-    elif deg_OR_rad = 'rad':
+    elif deg_OR_rad == 'rad':
         pass
     else:
         print_warning('Please input \'deg\' or \'rad\'')
