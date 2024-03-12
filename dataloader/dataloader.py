@@ -181,6 +181,9 @@ class SeeThroughFogDataset(Dataset): #TODO: Undo almost anything
         globe_name = random.choice(self.npy_list[lidar][self.weathers[weather_index]])
         globe = self.read_globe(Path(self.dataset_path).joinpath(lidar).joinpath(globe_name +'.npy'))
 
+        if globe == None:
+            return self.__getitem__(666)
+
         # To Tensor
         weather= torch.nn.functional.one_hot(weather_index, num_classes=self.weather_categories).type(torch.float32)
         globe = self.globe_transforms(globe)
