@@ -12,68 +12,31 @@ from utils.math import Cart2Cylin,approx_equal,Cart2Spher,PI
 import cv2
 from tqdm import tqdm
 import itertools
+import torch
+import json
 
-def lin2ham(pc:np.array)->np.array:
-    '''
-    Linear: [x,y,z,i]*n
-    Height-Angle Matrix: 
-    [
-    [(i,r)]*how many of Heights }
-    []                          } how many of Angles
-    []                          }
-    ...
-    ]
-    '''
-    # [x,y,z,i] ==> [h,longitude,d,i]
-    # pc[:,0:3] = Cart2Cylin(x=pc[:,0],y=pc[:,1],z=pc[:,2]) 
-    pc[:,0:3] = Cart2Cylin(x=pc[:,0],y=pc[:,1],z=pc[:,2]) 
-
-
-    number_of_not_zero = 0
-    points_dict = {}
-    # heights = []
-    # angles = []
-
-    for p in pc:
-        h = p[0]
-        t = p[1]
-        d = p[2]
-        i = p[3]
-
-        h = np.round(h, 3)
-        t = np.round(t, 2)
-        if (h,t) not in points_dict.keys():
-            points_dict[(h,t)] = [d,i]
-            # heights.append(h)
-            # angles.append(t)
-        else:
-            d_ = points_dict[(h,t)][0]
-            if d <= d_ :
-                points_dict[(h,t)] = [d,i]
-                # heights.append(h)
-                # angles.append(t)
-            else:
-                pass
+class Param:
+    def __init__(self, lidar, path2json) -> None:
+    
+        with open(path2json, 'r') as json_file:
+            args = json.load(json_file)[lidar]
+            # print(args)
+            for key, value in args.items():
+                if key == 'latitude_n' or key == 'longitude_n':
+                    setattr(self, key, value)
+                elif key == 'latitude_bound' or key == 'longitude_bound':
+                    value = [eval(v) for v in value]
+                    setattr(self, key, value)
 
 
-    heights = np.sort(np.unique([key[0] for key in points_dict.keys()]))
-    angles = np.sort(np.unique([key[1] for key in points_dict.keys()]))
+        self.min_bound = np.array([self.latitude_bound[0], self.longitude_bound[0]], dtype=np.float32)
+        self.max_bound = np.array([self.latitude_bound[1], self.longitude_bound[1]], dtype=np.float32)
 
-    ham = np.zeros((len(heights), len(angles), 2))
-
-
-    for i,j in itertools.product(range(len(heights)), range(len(angles))):
-        try:
-            ham[i,j] = points_dict[(heights[i],angles[j])]
-            number_of_not_zero+=1
-        except KeyError:
-            pass
-
-    # print('n=',num)
-    return ham, heights, angles, number_of_not_zero
+        self.resolution = (self.max_bound - self.min_bound)/np.array([self.latitude_n, self.longitude_n], dtype=float)
+        
 
 
-def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, latitude_bound=[-30/180*PI,10/108*PI], longitude_bound=[-PI,PI]) ->np.array:
+def globe_voxelization(pc:np.array, param:Param) ->np.array:
     '''
     input: points cloud n*[x,y,z,i]
 
@@ -87,12 +50,10 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, lat
     pc[:,0:3] = Cart2Spher(x=pc[:,0],y=pc[:,1],z=pc[:,2])
     # angles = pc[:, 0:2]
 
-    min_bound = np.array([latitude_bound[0], longitude_bound[0]])
-    max_bound = np.array([latitude_bound[1], longitude_bound[1]])
+    voxels = np.zeros((param.latitude_n, param.longitude_n, 3), dtype=float)
 
-    voxels = np.zeros((latitude_n, longitude_n, 3), dtype=float)
+    lats = []
 
-    resolution = (max_bound - min_bound)/np.array([latitude_n, longitude_n], dtype=float)
 
     for p in pc:
         latitude = p[0]
@@ -100,20 +61,24 @@ def globe_voxelization(pc:np.array, latitude_n:int=256, longitude_n:int=512, lat
         radius = p[2]
         reflectance = p[3]
         # print(p)
-        i = int((latitude-min_bound[0]) / resolution[0])
-        j = int((longitude-min_bound[1]) / resolution[1])
+        i = int((latitude-param.min_bound[0]) / param.resolution[0])
+        j = int((longitude-param.min_bound[1]) / param.resolution[1])
 
-        i = min(latitude_n-1, i)
-        j = min(longitude_n-1, j)
+        i = min(param.latitude_n-1, i)
+        j = min(param.longitude_n-1, j)
 
         voxels[i, j, 0] = voxels[i, j, 0] + 1 # number of point
         voxels[i, j, 1] = (voxels[i, j, 1] * (voxels[i, j, 0] - 1) + radius ) / voxels[i, j, 0]  # average radius
         voxels[i, j, 2] = (voxels[i, j, 2] * (voxels[i, j, 0] - 1) + reflectance ) / voxels[i, j, 0] # average reflectance
+
+        lats.append(latitude)
+
+    bound = (min(lats),max(lats))
     
-    return voxels
+    return voxels,bound
     
 
-def anti_globe_voxelization(globe:np.array, latitude_n:int=256, longitude_n:int=512, latitude_bound=[-30/180*PI,10/108*PI], longitude_bound=[-PI,PI])->np.array:
+def anti_globe_voxelization(globe:np.array, param:Param)->np.array:
     '''
     TODO: Never Debug
     input: globe latitude_n * longitude_n * 3
@@ -126,16 +91,15 @@ def anti_globe_voxelization(globe:np.array, latitude_n:int=256, longitude_n:int=
     longitude : Angle on XY-Plane (-PI, PI]
 
     '''
-    latitude_n, longitude_n, _= globe.shape
     pc = []
 
-    min_bound = np.array([latitude_bound[0], longitude_bound[0]])
-    max_bound = np.array([latitude_bound[1], longitude_bound[1]])
-    resolution = (max_bound - min_bound)/np.array([latitude_n, longitude_n], dtype=float)
+    min_bound = np.array([param.latitude_bound[0], param.longitude_bound[0]])
+    max_bound = np.array([param.latitude_bound[1], param.longitude_bound[1]])
+    resolution = (max_bound - min_bound)/np.array([param.latitude_n, param.longitude_n], dtype=float)
 
-    for i,j in itertools.product(range(latitude_n),range(longitude_n)):
-        latitude = min_bound[0] + i * resolution[0]
-        longitude = min_bound[1] + j * resolution[1]
+    for i,j in itertools.product(range(param.latitude_n),range(param.longitude_n)):
+        latitude = param.min_bound[0] + i * param.resolution[0]
+        longitude = param.min_bound[1] + j * param.resolution[1]
         radius = globe[i,j,1]
         reflectance = globe[i,j,2]
         point = np.array([latitude,longitude,radius,reflectance], dtype=float)
@@ -143,6 +107,67 @@ def anti_globe_voxelization(globe:np.array, latitude_n:int=256, longitude_n:int=
 
     pc = np.stack(pc, axis=0)
     return pc
+
+def merge(weather_entities:torch.Tensor, origin:torch.Tensor, param):
+    '''
+    TODO: Never Debug
+    input: globe latitude_n * longitude_n * 3
+        per pixel : [number of points, average radius of points, average reflected reflectance of points]
+           origin n*[latitude, longitude, radius, reflectance]
+
+    output: 
+            points cloud n*[latitude, longitude, radius, reflectance]
+
+    latitude : Angle between Point with Z-Positive [-PI/2, PI/2]
+    longitude : Angle on XY-Plane (-PI, PI]
+    '''
+    batch_size, number_of_point, _ = origin.size()
+    # batch_size, latitude_n,longitude_n, _ = weather_entities.size()
+    origin = origin.detach().numpy()
+    final = []
+
+
+    for i in range(number_of_point):
+        point = origin[:, i, :]
+        latitude = point[:, 0]
+        longitude = point[:, 1]
+
+        i = ((latitude-param.min_bound[0]) / param.resolution[0]).astype(int)
+        j = ((latitude-param.min_bound[1]) / param.resolution[1]).astype(int)
+
+        i = np.clip(i, a_min=None, a_max=param.latitude_n-1)
+        j = np.clip(j, a_min=None, a_max=param.longitude_n-1)
+
+        latitude_entity = param.min_bound[0] + (i+np.random.uniform(-0.5, 0.5)) * param.resolution[0]
+        longitude_entity = param.min_bound[1] + (j+np.random.uniform(-0.5, 0.5)) * param.resolution[1]
+
+        loc = np.vstack((latitude, longitude)).T
+        loc_entity = np.vstack((latitude_entity, longitude_entity)).T
+
+        x = loc-loc_entity
+        x = x**2
+        x = np.sum(x, axis=1)
+        x = np.sqrt(x)
+
+        x = torch.from_numpy(x) # tensor
+        size_entity = weather_entities[:,i,j,3] # tensor
+        x = x/size_entity
+        probs = torch.distributions.Normal(0, 1).cdf(x)
+        random_numbers = torch.rand_like(probs)
+        binary_tensor = (random_numbers <= probs).float()
+        point = binary_tensor * torch.from_numpy(point)
+
+        final.append(point)
+
+        entity = np.column_stack(latitude_entity, longitude_entity, weather_entities[:,i,j,2], weather_entities[:,i,j,3])
+        entity = (1-binary_tensor) * entity
+        final.append(point)
+
+
+        # radius = weather_entities[i,j,1]
+        # reflectance = weather_entities[i,j,2]
+
+    pass
 
 
 
@@ -193,40 +218,59 @@ def read_pcd(file, dataset = 'SeeingThroughFog' ): # TODO：to STF
 
 
 if __name__ == '__main__':
-    PATH_TO_LIDAR = Path('I:\Datasets\DENSE\SeeingThroughFog\lidar_hdl64_strongest')
-
+    LIDAR_NAME = 'lidar_vlp32_strongest' # lidar_vlp32_strongest, lidar_hdl64_strongest(10.-30)
     STF_PATH = Path('I:\Datasets\DENSE\SeeingThroughFog')
+    PATH_TO_PARAM = Path('./utils/lidar_param.json')
+    PATH_TO_LIDAR = STF_PATH.joinpath(LIDAR_NAME)
 
-    WEIGHT,HEIGHT = 1024, 512
+    WEIGHT,HEIGHT = 512, 256
 
     Path('./temp/').mkdir(exist_ok = True)
-    videowriter = cv2.VideoWriter('./temp/point_cloud_video.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps = 10, frameSize=(WEIGHT, HEIGHT))
+    videowriter = cv2.VideoWriter('./temp/globe_'+LIDAR_NAME+'.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps = 10, frameSize=(WEIGHT, HEIGHT))
 
     if STF_PATH.is_dir():
-        files = list(STF_PATH.joinpath('lidar_hdl64_strongest').glob('*.bin'))
+        files = list(PATH_TO_LIDAR.glob('*.bin'))
         files.sort(key=str)
     else:
         print_warning('Not Found '+str(STF_PATH))
         sys.exit()
 
+    
+    param = Param(LIDAR_NAME, PATH_TO_PARAM)
+
+    print('lidar name:', LIDAR_NAME)
     bar = enumerate(files)
     bar = tqdm(bar, desc="Processing", total=len(files))
+
+    max_bound = []
+    min_bound = []
+
     try:
         for _, file in bar:
             bar.desc = str(file.stem)
             pc = read_pcd(file)
             # print(pc.shape)
-            frame = globe_voxelization(pc, HEIGHT, WEIGHT)
+            frame, bound = globe_voxelization(pc, param=param)
             frame = ndarray2img(frame)
-            cv2.putText(img=frame, text=file.stem, org=(0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1.0, color=(255, 255, 255), thickness=2)
+            cv2.putText(img=frame, text=file.stem, org=(0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=.5, color=(255, 255, 255), thickness=2)
             videowriter.write(frame)
             # cv2.imshow('voxels', frame)
             # cv2.waitKey(0)
+            max_bound.append(bound[1])
+            min_bound.append(bound[0])
+
 
     except KeyboardInterrupt:
         pass
 
     videowriter.release()
+
+    print(np.mean(max_bound)/PI*180)
+    print(np.mean(min_bound)/PI*180)
+
+    print(np.std(max_bound)/PI*180)
+    print(np.std(min_bound)/PI*180)
+
     
 
     
