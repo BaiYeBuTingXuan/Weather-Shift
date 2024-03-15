@@ -23,7 +23,7 @@ args = parser.parse_args()
 STF_PATH = Path('I:\Datasets\DENSE\SeeingThroughFog')
 SAVE_PATH = Path('.\datasets\DENSE\SeeingThroughFog').joinpath(args.lidar_name)
 
-WEIGHT,HEIGHT = 1024, 512
+WEIGHT,HEIGHT = 256, 128
 
 if __name__ == '__main__':
     SAVE_PATH.mkdir(parents=True, exist_ok = True)
