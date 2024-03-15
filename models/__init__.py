@@ -6,7 +6,7 @@ import torch
 from torch.autograd import Variable
 
 
-def weights_init_normal(m):
+def weights_init(m):
     class_name = m.__class__.__name__
     if class_name.find('Conv') != -1:
         torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
