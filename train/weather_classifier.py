@@ -1,4 +1,5 @@
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 import sys
 from os.path import join, dirname
 sys.path.insert(0, join(dirname(__file__), '..'))
@@ -66,7 +67,7 @@ logger = SummaryWriter(log_dir=LOG_PATH)
 write_params(str(LOG_PATH), parser, description)
 
 """ model loading """
-model = WeatherClassifier()
+model = WeatherClassifier().to(device)
 
 """ train dataset loading """
 train_loader = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train'), 
@@ -117,9 +118,9 @@ if __name__ == '__main__':
 
             batch['globe'] = batch['globe'].to(device)
             batch['weather'] = batch['weather'].to(device)
-            batch['point_cloud'].requires_grad = True
+            batch['globe'].requires_grad = True
 
-            prediction = model(batch['point_cloud'])
+            prediction = model(batch['globe'])
 
             loss = criterion(prediction, batch['weather'])
 

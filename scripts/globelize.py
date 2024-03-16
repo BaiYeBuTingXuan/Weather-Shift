@@ -20,11 +20,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--lidar_name', type=str, default="lidar_hdl64_strongest", help='name of the lidar')
 args = parser.parse_args()
 
-STF_PATH = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/Weather-Shift/data/Dense/SeeingThroughFog')
+STF_PATH = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog')
 PATH_TO_PARAM = Path('./utils/lidar_param.json')
 
 
-WEIGHT,HEIGHT = 256, 128
+# WEIGHT,HEIGHT = 256, 128
 
 if __name__ == '__main__':
     SRC_PATH = STF_PATH.joinpath('cloud').joinpath(args.lidar_name)
@@ -48,7 +48,7 @@ if __name__ == '__main__':
             pc = read_pcd(file)
             frame,_ = globe_voxelization(pc, param=param)
             # frame = ndarray2img(frame)
-            np.save(SAVE_PATH.joinpath(file.stem+'.npy'), frame)
+            cv2.imwrite(str(SAVE_PATH.joinpath(file.stem+'.png')), frame)
             # cv2.waitKey(0)
     except KeyboardInterrupt:
         pass

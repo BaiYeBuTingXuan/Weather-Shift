@@ -89,6 +89,7 @@ class WeatherClassifier(nn.Module):
             if pooling:
                 layers.append(nn.MaxPool2d(kernel_size=4, stride=2, padding=1))
             return layers
+        
 
         self.feature_extracter = nn.Sequential(
             *discriminator_block(in_channels, 64, normalize=False, pooling=False),
@@ -106,6 +107,7 @@ class WeatherClassifier(nn.Module):
         self.activation = nn.Softmax(dim=1)
 
     def forward(self, x):
+        print(x.size())
         x = self.feature_extracter(x)
         batch_size, _, _, _ = x.size()
         x = x.reshape(batch_size, -1)
