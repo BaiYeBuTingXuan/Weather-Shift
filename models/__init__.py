@@ -58,9 +58,9 @@ class LSTMCell(nn.Module):
         return x
 
 
-class Discriminator(nn.Module):
+class WeatherClassifier(nn.Module):
     def __init__(self, in_channels=3, out_channel=9+1):
-        super(Discriminator, self).__init__()
+        super(WeatherClassifier, self).__init__()
 
         # 定义Discriminator的单元结构
         def discriminator_block(in_size, out_size, kernel_size=4, stride=2, padding=1, normalize=True, leaky=0.2, dropout=0.2, pooling=True):
@@ -101,7 +101,7 @@ class Discriminator(nn.Module):
 
 if __name__ == '__main__':
     img = torch.rand([32,3,128,256])
-    d = Discriminator()
+    d = WeatherClassifier()
     x = d(img)
     print(x.size())
     print("good！")

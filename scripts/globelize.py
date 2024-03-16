@@ -20,28 +20,33 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--lidar_name', type=str, default="lidar_hdl64_strongest", help='name of the lidar')
 args = parser.parse_args()
 
-STF_PATH = Path('I:\Datasets\DENSE\SeeingThroughFog')
-SAVE_PATH = Path('.\datasets\DENSE\SeeingThroughFog').joinpath(args.lidar_name)
+STF_PATH = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/Weather-Shift/data/Dense/SeeingThroughFog')
+PATH_TO_PARAM = Path('./utils/lidar_param.json')
+
 
 WEIGHT,HEIGHT = 1024, 512
 
 if __name__ == '__main__':
-    SAVE_PATH.mkdir(parents=True, exist_ok = True)
+    SRC_PATH = STF_PATH.joinpath('cloud').joinpath(args.lidar_name)
+    SAVE_PATH = STF_PATH.joinpath('globe').joinpath(args.lidar_name)
 
+    SAVE_PATH.mkdir(parents=True, exist_ok = True)
     if STF_PATH.is_dir():
-        files = list(STF_PATH.joinpath('args.lidar_name').glob('*.bin'))
+        files = list(SRC_PATH.glob('*.bin'))
         files.sort(key=str)
     else:
-        print_warning('Not Found '+str(STF_PATH))
+        print_warning('Not Found '+str(SRC_PATH))
         sys.exit()
 
+    param = Param(args.lidar_name, PATH_TO_PARAM)
+    print('lidar name:', args.lidar_name)
     bar = enumerate(files)
     bar = tqdm(bar, desc="Processing", total=len(files))
     try:
         for _, file in bar:
             bar.desc = str(file.stem)
             pc = read_pcd(file)
-            frame = globe_voxelization(pc, HEIGHT, WEIGHT)
+            frame,_ = globe_voxelization(pc, param=param)
             # frame = ndarray2img(frame)
             np.save(SAVE_PATH.joinpath(file.stem+'.npy'), frame)
             # cv2.waitKey(0)

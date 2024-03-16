@@ -108,7 +108,7 @@ def anti_globe_voxelization(globe:np.array, param:Param)->np.array:
     pc = np.stack(pc, axis=0)
     return pc
 
-def merge(weather_entities:torch.Tensor, origin:torch.Tensor, param):
+def merge(weather_entities, origin, param):
     '''
     TODO: Never Debug
     input: globe latitude_n * longitude_n * 3
