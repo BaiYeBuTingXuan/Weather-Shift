@@ -9,7 +9,11 @@ temp/
 data/
 dataset/
 
+# results of train
+./train/result
+
 # Big File
 *.zip
 *.mp4
 *.avi
+*.pth

@@ -4,6 +4,7 @@ import os
 import sys  
 sys.path.append('/home/wanghejun/Desktop/wanghejun/WeatherShift/Weather-Shift')
 import glob
+import time
 
 def mkdir(path):
     if not os.path.exists(path):
@@ -31,7 +32,7 @@ def print_warning(message):
     print('\033[93m [WARNING] ' + message + '\033[0m')
 
 
-def ndarray2img(array:np.array)->np.array:
+def ndarray2img(array):
     assert len(array.shape) == 3 # Only for 3-Dimension Tensor
     assert array.shape[2] == 3 or array.shape[2] == 1 # Only for RGB or Gray img that 3rd dimension == 3 or 1
 
@@ -40,6 +41,24 @@ def ndarray2img(array:np.array)->np.array:
 
     return img
 
+
+def write_params(log_path, parser, description=None):
+    opt = parser.parse_args()
+    options = parser._optionals._actions
+    with open(log_path+'params.md', 'w+') as file:
+        file.write('# Params\n')
+        file.write('********************************\n')
+        file.write('Time: '+time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())+'\n')
+        if description is not None:
+            file.write('**Description**: '+description+'\n')
+        
+        file.write('| Param | Value | Description |\n')
+        file.write('| ----- | ----- | ----------- |\n')
+        for i in range(len(parser._optionals._actions)):
+            option = options[i]
+            if option.dest != 'help':
+                file.write('|**'+ option.dest+'**|'+str(opt.__dict__[option.dest])+'|'+option.help+'|\n')
+        file.write('********************************\n\n')
 # def dec2rgb(dec):
 #   x = int(dec)
 

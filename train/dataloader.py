@@ -20,9 +20,9 @@ from scipy.stats import beta
 np.set_printoptions(suppress=True, precision=4, linewidth=65535)
 import matplotlib.pyplot as plt
 
-from utils import get_filelist,read_pcd,print_warning
-from utils.math import angle_normal,spin,sign
-from utils.point_cloud import globe_voxelization, read_pcd
+from utils import print_warning
+# from utils.math import angle_normal,spin,sign
+from utils.point_cloud import read_pcd
 
 from pathlib import Path
 import itertools
@@ -123,14 +123,14 @@ class ADUULMDataset(Dataset):
         return sum(length)
 
 
-class SeeThroughFogDataset(Dataset): #TODO: Undo almost anything
+class SeeingThroughFogDataset(Dataset): #TODO: Undo almost anything
     def __init__(self, 
                 dataset_path='I:\Datasets\DENSE\SeeingThroughFog', 
                 splits_path='.\splits', 
                 mode = 'train',
                 globe_height = 256,
                 globe_width = 512,
-                weathers = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night'],
+                weathers = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night', 'None'],
                 lidars = ['lidar_hdl64_strongest' ,'lidar_vlp32_strongest']):
         # self.data_index = data_index
         self.mode = mode
@@ -155,6 +155,8 @@ class SeeThroughFogDataset(Dataset): #TODO: Undo almost anything
 
         self.npy_list = {} # self.bin_list[one of lidars][one of weathers] = one of names of globe in *.npy
         for lidar,weather in itertools.product(lidars, weathers):
+            if weather == 'None':
+                continue
             with open(Path(splits_path).joinpath(mode).joinpath(weather+'.txt')) as f:
                 names = {}
                 names[weather] = [line.strip().replace(',', '_') for line in f.readlines()]
@@ -182,7 +184,7 @@ class SeeThroughFogDataset(Dataset): #TODO: Undo almost anything
         globe = self.read_globe(Path(self.dataset_path).joinpath(lidar).joinpath(globe_name +'.npy'))
 
         if globe == None:
-            return self.__getitem__(666)
+            return self.__getitem__()
 
         # To Tensor
         weather= torch.nn.functional.one_hot(weather_index, num_classes=self.weather_categories).type(torch.float32)
