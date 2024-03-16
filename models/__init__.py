@@ -23,9 +23,9 @@ def custom_padding(input_tensor, left_padding, right_padding, top_padding, botto
     # 右边填充
     right_pad = input_tensor[:, :, :, :right_padding]
     # 上边填充
-    top_pad = torch.zeros(batch_size, channels, top_padding, width, device=input_tensor.device)
+    top_pad = torch.zeros(batch_size, channels, top_padding, width+left_padding+right_padding, device=input_tensor.device)
     # 下边填充
-    bottom_pad = torch.zeros(batch_size, channels, bottom_padding, width, device=input_tensor.device)
+    bottom_pad = torch.zeros(batch_size, channels, bottom_padding, width+left_padding+right_padding, device=input_tensor.device)
     
     # 拼接填充后的特征图
     padded_tensor = torch.cat((left_pad, input_tensor, right_pad), dim=3)
@@ -56,6 +56,20 @@ class LSTMCell(nn.Module):
         for layer in self.layers:
             x = layer(x)
         return x
+    
+
+class PADCell(nn.Module):
+    def __init__(self, padding=1):
+        super(PADCell, self).__init__()
+        self.is_int = type(padding) == int
+        self.padding = padding
+
+    def forward(self, x):
+        if self.is_int:
+            x = custom_padding(x, left_padding=self.padding, right_padding=self.padding, top_padding=self.padding, bottom_padding=self.padding)
+        else:
+            x = custom_padding(x, left_padding=self.padding[0], right_padding=self.padding[1], top_padding=self.padding[2], bottom_padding=self.padding[3])
+        return x
 
 
 class WeatherClassifier(nn.Module):
@@ -65,8 +79,8 @@ class WeatherClassifier(nn.Module):
         # 定义Discriminator的单元结构
         def discriminator_block(in_size, out_size, kernel_size=4, stride=2, padding=1, normalize=True, leaky=0.2, dropout=0.2, pooling=True):
             """Returns downsampling layers of each discriminator block"""
-            layers = [nn.CircularPad2d(padding=(padding,padding,0,0))]
-            layers.append(nn.Conv2d(in_size, out_size, kernel_size= kernel_size, stride=stride, padding=(padding,0)))
+            layers = [PADCell()]
+            layers.append(nn.Conv2d(in_size, out_size, kernel_size= kernel_size, stride=stride))
             if normalize:
                 layers.append(nn.InstanceNorm2d(out_size))
             layers.append(nn.LeakyReLU(leaky, inplace=True))

@@ -3,6 +3,8 @@
 import torch.nn as nn
 import torch
 from torch.autograd import Variable
+from models import PADCell
+
 
 class UNetDown(nn.Module):
     """
@@ -14,8 +16,8 @@ class UNetDown(nn.Module):
     """
     def __init__(self, in_size, out_size, kernel_size=4, stride=2, padding=1, normalize=True, leaky=0.2, dropout=0.5):
         super(UNetDown, self).__init__()
-        layers = [nn.CircularPad2d(padding=(padding,padding,0,0)),
-                  nn.Conv2d(in_size, out_size, kernel_size=kernel_size, stride=stride, padding=(padding,0), bias=False)]
+        layers = [PADCell(padding=padding),
+                  nn.Conv2d(in_size, out_size, kernel_size=kernel_size, stride=stride, bias=False)]
 
         if normalize:   # 是否归一化
             layers.append(nn.InstanceNorm2d(out_size))
@@ -38,7 +40,7 @@ class UNetUp(nn.Module):
         output:model(x) cat skip_input
         structure:Conv2d-->Norm-->Relu-->Dropout(if chosen)
     """
-    def __init__(self, in_size, out_size, kernel_size=2, stride=2, padding=1, normalize=True, dropout=0.0):
+    def __init__(self, in_size, out_size, kernel_size=2, stride=2, normalize=True, dropout=0.0):
         super(UNetUp, self).__init__()
         layers = [
                   nn.ConvTranspose2d(in_size, out_size, kernel_size=kernel_size, stride=stride, bias=False),
@@ -93,8 +95,7 @@ class UNetGenerator(nn.Module):
         # 定义输出
         self.final = nn.Sequential(
             nn.Upsample(scale_factor=2),
-            nn.CircularPad2d((1, 0, 0, 0)),
-            nn.ZeroPad2d((0, 0, 1, 0)),
+            PADCell(padding=(1, 0, 1, 0)),
             nn.Conv2d(128, out_channels, 4, padding=1),
             nn.ReLU()
         )
