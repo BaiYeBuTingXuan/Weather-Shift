@@ -107,7 +107,7 @@ class WeatherClassifier(nn.Module):
         self.activation = nn.Softmax(dim=1)
 
     def forward(self, x):
-        print(x.size())
+        # print(x.size())
         x = self.feature_extracter(x)
         batch_size, _, _, _ = x.size()
         x = x.reshape(batch_size, -1)

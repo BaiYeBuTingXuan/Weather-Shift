@@ -75,7 +75,7 @@ def globe_voxelization(pc:np.array, param:Param) ->np.array:
 
     bound = (min(lats),max(lats))
     
-    return voxels,bound
+    return voxels.astype(np.float32),bound
     
 
 def anti_globe_voxelization(globe:np.array, param:Param)->np.array:

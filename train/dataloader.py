@@ -3,8 +3,9 @@
 # -*- coding: utf-8 -*-
 import glob
 import os
-import sys  
-sys.path.append('/home/wanghejun/Desktop/wanghejun/WeatherShift/Weather-Shift')
+import sys
+from os.path import join, dirname
+sys.path.insert(0, join(dirname(__file__), '..'))
 import random
 import numpy as np
 from PIL import Image
@@ -33,6 +34,7 @@ import itertools
 # parser.add_argument('--random_seed', type=int, default=6, help='random seed')
 # arg = parser.parse_args()
 
+WEATHERS = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night']
 
 def collate_fn(data):
     # print(collate_fn)
@@ -47,14 +49,14 @@ def collate_fn(data):
     return padded_data, lengths_tensor
 
 
-class SeeingThroughFogDataset(Dataset): #TODO: Undo almost anything
+class SeeingThroughFogDataset(Dataset):
     def __init__(self, 
                 dataset_path='I:\Datasets\DENSE\SeeingThroughFog', 
-                splits_path='.\splits', 
+                splits_path=r'./splits', 
                 mode = 'train',
                 globe_height = 128,
                 globe_width = 256,
-                weathers = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night'],
+                weathers = WEATHERS,
                 lidars = ['lidar_hdl64_strongest']): #  'lidar_vlp32_strongest'
         # self.data_index = data_index
         self.mode = mode
@@ -95,40 +97,39 @@ class SeeingThroughFogDataset(Dataset): #TODO: Undo almost anything
         return cloud
 
     def read_globe(self, path):
-        if path.is_file():
-            image = cv2.imread(str(path))
-            # globe = np.fromfile(path, dtype=np.float32)
-            # globe = globe.reshape(self.height,self.width,3)
-            globe = globe.transpose(2,1,0)
+        globe = np.load(path)
+        
+        # globe = globe.transpose(2,1,0)
+        if globe.shape == (self.height, self.width, 3):
+            pass
         else:
-            print_warning('Not Found: '+ path)
-            globe = None
+            globe = np.resize(globe, (self.height, self.width, 3))
+            print_warning('Shape of the globe is not ({self.height}, {self.width}, 3)')
+            print(str(path))
+
         return globe
 
     def __getitem__(self, index):
         # Read in Globe
         lidar = random.choice(self.lidars) # choice a lidar form lidars(LIST)
         weather_index = random.choice(range(self.weather_categories))
-        
-        globe_name = random.choice(self.npy_list[lidar][self.weathers[weather_index]])
+        weather = self.weathers[weather_index]
+        globe_name = random.choice(self.npy_list[lidar][weather])
         
         GLOBE_PATH = Path(self.dataset_path).joinpath(lidar).joinpath(globe_name +'.npy')
         if GLOBE_PATH.is_file:
             globe = self.read_globe(GLOBE_PATH)
-            globe = Image.fromarray(globe)
+            # globe = Image.fromarray(globe)
             
         else:
             print_warning('NOT GET', str(GLOBE_PATH))
             return self.__getitem__(1)
-
+        
         # To Tensor
-        weather= torch.nn.functional.one_hot(torch.tensor(weather_index), num_classes=self.weather_categories+1).type(torch.float32)
-
-        print('1',globe.size)
+        weather_index_in_WEATHERS = WEATHERS.index(weather)
+        weather= torch.nn.functional.one_hot(torch.tensor(weather_index_in_WEATHERS), num_classes=len(WEATHERS)+1).type(torch.float32)
 
         globe = self.globe_transforms(globe)
-        print('2',globe.size())
-
 
         # TODO: labels for Object Detection
         if self.mode == 'train':
@@ -170,3 +171,9 @@ if __name__ == '__main__':
         cnt+=1
         if cnt >= 5:
             break
+
+    # dataset = SeeingThroughFogDataset()
+    # p = Path(r'/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog/globe/lidar_hdl64_strongest/2018-02-03_20-48-35_00400.npy')
+    # x = dataset.read_globe(path=p)
+    # print(x.shape)
+    # print(x.dtype)

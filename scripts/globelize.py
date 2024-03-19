@@ -47,8 +47,11 @@ if __name__ == '__main__':
             bar.desc = str(file.stem)
             pc = read_pcd(file)
             frame,_ = globe_voxelization(pc, param=param)
-            # frame = ndarray2img(frame)
-            cv2.imwrite(str(SAVE_PATH.joinpath(file.stem+'.png')), frame)
+            # print(frame.shape)
+            # frame = ndarray2img(frame)    
+            np.save(str(SAVE_PATH.joinpath(file.stem+'.npy')), frame)
+
+            # cv2.imwrite(str(SAVE_PATH.joinpath(file.stem+'.bin')), frame)
             # cv2.waitKey(0)
     except KeyboardInterrupt:
         pass
