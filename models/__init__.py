@@ -77,7 +77,7 @@ class WeatherClassifier(nn.Module):
         super(WeatherClassifier, self).__init__()
 
         # 定义Discriminator的单元结构
-        def discriminator_block(in_size, out_size, kernel_size=4, stride=2, padding=1, normalize=True, leaky=0.2, dropout=0.2, pooling=True):
+        def discriminator_block(in_size, out_size, kernel_size=4, stride=2, padding=1, normalize=True, leaky=0.2, dropout=0.25, pooling=True):
             """Returns downsampling layers of each discriminator block"""
             layers = [PADCell()]
             layers.append(nn.Conv2d(in_size, out_size, kernel_size= kernel_size, stride=stride))
@@ -97,22 +97,27 @@ class WeatherClassifier(nn.Module):
             *discriminator_block(128, 256),
             *discriminator_block(256, 512),
             # nn.ZeroPad2d((0,0,1,0)),
-            nn.Conv2d(512, 256, kernel_size=(2,4), stride=1, padding=0, bias=False),
-            nn.Tanh(),
-            nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.Tanh(),
-            nn.Conv2d(256, out_channel, kernel_size=1, stride=1, padding=0, bias=False)
+            nn.Conv2d(512, 512, kernel_size=(2,4), stride=1, padding=0, bias=False),
+            nn.ReLU(),
+            nn.Conv2d(512, 256, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.ReLU()
         )
 
-        self.activation = nn.Softmax(dim=1)
+        self.final = nn.Sequential(
+            nn.Linear(256, out_channel, bias=False),
+            nn.Softmax(dim=1)
+        )
 
     def forward(self, x):
         # print(x.size())
-        x = self.feature_extracter(x)
-        batch_size, _, _, _ = x.size()
-        x = x.reshape(batch_size, -1)
-        x = self.activation(x)
-        return x
+        f = self.feature_extracter(x)
+        batch_size, _, _, _ = f.size()
+
+        c = f.reshape(batch_size, -1)
+        c = self.final(c)
+
+        f = f.reshape(batch_size, 16, 16)
+        return c,f
 
 
 if __name__ == '__main__':

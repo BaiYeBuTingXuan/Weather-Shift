@@ -31,7 +31,7 @@ torch.set_num_threads(16)
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--train_name', type=str, default='1', help='list of train lidar')
+parser.add_argument('--train_name', type=str, default='0', help='list of train lidar')
 parser.add_argument('--lidar', type=list, default=['lidar_hdl64_strongest'], help='list of train lidar')
 parser.add_argument('--dataset_path', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog", help='path of the dataset')
 parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
@@ -99,7 +99,7 @@ def evaluate(total_step):
         batch['globe'].requires_grad = False
         batch['weather'].requires_grad = False
 
-        prediction = model(batch['globe'])
+        prediction, _ = model(batch['globe'])
 
         pred = np.argmax(prediction.cpu().detach().numpy(), axis=1) 
         label = np.argmax(batch['weather'].cpu().detach().numpy(), axis=1) 
@@ -135,7 +135,7 @@ if __name__ == '__main__':
             batch['weather'] = batch['weather'].to(device)
             batch['globe'].requires_grad = True
 
-            prediction = model(batch['globe'])
+            prediction,_ = model(batch['globe'])
 
             loss = criterion(prediction, batch['weather'])
 

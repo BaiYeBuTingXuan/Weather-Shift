@@ -1,7 +1,7 @@
 # Params
 ********************************
-Time: 2024-03-18 16:27:59
-**Description**: train weather_classifier of 0
+Time: 2024-03-19 14:07:59
+**Description**: train classifier of 0
 | Param | Value | Description |
 | ----- | ----- | ----------- |
 |**train_name**|0|list of train lidar|
@@ -11,7 +11,7 @@ Time: 2024-03-18 16:27:59
 |**epoch**|0|epoch to start training from|
 |**n_epochs**|1000|number of epochs of training|
 |**n_cpu**|16|number of CPU threads to use during batches generating|
-|**lr**|3e-05|learning rate|
+|**lr**|5e-06|learning rate|
 |**weight_decay**|0.0005|adam: weight_decay|
 |**train_time**|1000.0|total training time|
 |**checkpoints_interval**|100|interval between model checkpoints|
