@@ -45,7 +45,7 @@ parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weig
 parser.add_argument('--train_time', type=int, default=1e3, help='total training time')
 parser.add_argument('--checkpoints_interval', type=int, default=100, help='interval between model checkpoints')
 parser.add_argument('--clip_value', type=float, default=1, help='Clip value for training to avoid gradient vanishing')
-# parser.add_argument('--gamma', type=float, default=1, help='trade-off of L1 to the L2')
+parser.add_argument('--gamma', type=float, default=1, help='trade-off of L1(Constant Loss) to the CEL(Weather Loss)')
 parser.add_argument('--target_weather', type=str, default='dense_fog_day', help='the weather that we need to simulate')
 parser.add_argument('--path2clser', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog", help='path to the model of dicriminator')
 
@@ -88,46 +88,72 @@ else:
     print(opt.path2clser)
 
 """ train dataset loading """
-clear_day_train = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train', weathers=['clear_day']), 
+clear_train = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train', weathers=['clear_day']), 
                                                 batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
-# dense_fog_train = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train', weathers=['light_fog_day']), 
-                                                # batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
+weathered_train = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train', weathers=['clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night']), 
+                                                batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 """ validation dataset loading """
-clear_day_valid = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='test', weathers=['clear_day']), 
+clear_valid = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='test', weathers=['clear_day']), 
                                                 batch_size=1, shuffle=False, num_workers=1)
 
-# dense_fog_valid = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='test', weathers=['light_fog_day']), 
-                                                # batch_size=1, shuffle=False, num_workers=1)
+weathered_valid = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='test', weathers=['clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night']), 
+                                                batch_size=1, shuffle=False, num_workers=1)
 # test_samples = iter(test_loader)
 
 """ Loss and optimizer """
-criterion = torch.nn.CrossEntropyLoss().to(device)
+
+# def criterion(pred_weathered, label_weathered):
+
+CrossEntropyLoss = torch.nn.CrossEntropyLoss().to(device)
+L1Loss = torch.nn.L1Loss().to(device)
+
 
 optimizer = torch.optim.Adam(G.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
 
 
 """ label  """
-label = WEATHERS.index(opt.target_weather)
-label = torch.nn.functional.one_hot(torch.tensor(label), num_classes=len(WEATHERS)+1).type(torch.float32).to(device)
+# label_clear = WEATHERS.index('None')
+# label_clear = torch.nn.functional.one_hot(torch.tensor(label_clear), num_classes=len(WEATHERS)).type(torch.float32).to(device)
+# expanded_label = torch.stack([label_clear] * opt.batch_size, dim=0)
 
 def evaluate(total_step):
     G.eval()
-    loss = []
-    for i, batch in enumerate(clear_day_valid):
-        batch['globe'] = batch['globe'].to(device)
-        batch['globe'].requires_grad = True
+    loss_list = []
+    cel_list = []
+    l1_list = []
 
-        fake = G(batch['globe'])
-        pred = D(fake)
+    for i, batch in enumerate(zip(clear_valid, weathered_valid)):
+        total_step += 1
+            
+        clear = batch_clear['globe'].to(device)
+            # weathered = batch_weathered['globe'].to(device)
+        label_weathered = batch_weathered['weather'].to(device)
+            
 
-        loss = criterion(pred, label)
+        clear.requires_grad = True
+            # weathered.requires_grad = True
 
-        loss.append(criterion(pred, label).item())
+        fake_weathered = G(clear)
+        pred_weathered, _ = D(fake_weathered)
 
-    loss = np.array(loss)
-    logger.add_scalar('test/loss',loss.mean(), total_step)
+        cel = CrossEntropyLoss(pred_weathered, label_weathered)
+        l1 =  L1Loss(clear, fake_weathered)
+        loss = cel + l1 * opt.gamma
+
+        cel_list.append(cel)
+        l1_list.append(l1)
+        loss_list.append(loss)
+
+    cel = np.array(cel_list).mean()
+    l1 = np.array(l1_list).mean()
+    loss = np.array(loss_list).mean()
+
+    logger.add_scalar('valid/CrossEntropyLoss',cel, total_step)
+    logger.add_scalar('valid/L1Loss',l1, total_step)
+    logger.add_scalar('valid/Loss',loss, total_step)
+
     G.train()
 
 
@@ -138,20 +164,27 @@ if __name__ == '__main__':
     for epoch in range(opt.epoch, opt.n_epochs):
         print(f"epoch: {epoch}")
 
-        bar = enumerate(clear_day_train)
-        length = len(clear_day_train)
+        
+        bar = enumerate(zip(clear_train, weathered_train))
+        length = len(1000)
         bar = tqdm(bar, total=length)
-        for i, batch in bar:
+        for i, batch_clear, batch_weathered in bar:
             total_step += 1
             
-            batch['globe'] = batch['globe'].to(device)
-            # batch['weather'] = batch['weather'].to(device)
-            batch['globe'].requires_grad = True
+            clear = batch_clear['globe'].to(device)
+            # weathered = batch_weathered['globe'].to(device)
+            label_weathered = batch_weathered['weather'].to(device)
+            
 
-            fake = G(batch['globe'])
-            pred = D(fake)
+            clear.requires_grad = True
+            # weathered.requires_grad = True
 
-            loss = criterion(pred, label)
+            fake_weathered = G(clear)
+            pred_weathered, _ = D(fake_weathered)
+
+            cel = CrossEntropyLoss(pred_weathered, label_weathered)
+            l1 =  L1Loss(clear, fake_weathered)
+            loss = cel + l1 * opt.gamma
 
             optimizer.zero_grad()
 
@@ -161,6 +194,8 @@ if __name__ == '__main__':
 
             optimizer.step()
 
+            logger.add_scalar('train/CrossEntropyLoss',cel.item(), total_step)
+            logger.add_scalar('train/L1Loss',l1.item(), total_step)
             logger.add_scalar('train/loss',loss.item(), total_step)
 
             if total_step % opt.checkpoints_interval == 0:

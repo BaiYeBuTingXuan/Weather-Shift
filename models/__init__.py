@@ -77,7 +77,7 @@ class WeatherClassifier(nn.Module):
         super(WeatherClassifier, self).__init__()
 
         # 定义Discriminator的单元结构
-        def discriminator_block(in_size, out_size, kernel_size=4, stride=2, padding=1, normalize=True, leaky=0.2, dropout=0.25, pooling=True):
+        def discriminator_block(in_size, out_size, kernel_size=4, stride=2, normalize=True, leaky=0.2, dropout=0.3, pooling=True):
             """Returns downsampling layers of each discriminator block"""
             layers = [PADCell()]
             layers.append(nn.Conv2d(in_size, out_size, kernel_size= kernel_size, stride=stride))
@@ -90,39 +90,55 @@ class WeatherClassifier(nn.Module):
                 layers.append(nn.MaxPool2d(kernel_size=4, stride=2, padding=1))
             return layers
         
+        self.block1 = nn.Sequential(
+            *discriminator_block(in_channels, 64, normalize=False, pooling=False)
+        )
 
-        self.feature_extracter = nn.Sequential(
-            *discriminator_block(in_channels, 64, normalize=False, pooling=False),
-            *discriminator_block(64, 128, pooling=False),
-            *discriminator_block(128, 256),
+        self.block2 = nn.Sequential(
+            *discriminator_block(64, 128, pooling=False)
+        )
+
+        self.block3 = nn.Sequential(
+            *discriminator_block(128, 256)
+        )
+
+        self.block4 = nn.Sequential(
             *discriminator_block(256, 512),
+        )
+
+        self.block5 = nn.Sequential(
             # nn.ZeroPad2d((0,0,1,0)),
             nn.Conv2d(512, 512, kernel_size=(2,4), stride=1, padding=0, bias=False),
-            nn.ReLU(),
-            nn.Conv2d(512, 256, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.ReLU()
+            nn.Tanh(),
+            nn.Conv2d(512, 512, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Tanh()
         )
 
         self.final = nn.Sequential(
-            nn.Linear(256, out_channel, bias=False),
+            nn.Linear(512, out_channel, bias=False),
             nn.Softmax(dim=1)
         )
 
     def forward(self, x):
-        # print(x.size())
-        f = self.feature_extracter(x)
-        batch_size, _, _, _ = f.size()
+        batch_size, _, _, _ = x.size()
 
-        c = f.reshape(batch_size, -1)
-        c = self.final(c)
+        x1 = self.block1(x)
+        x2 = self.block2(x1)
+        x3 = self.block3(x2)
+        x4 = self.block4(x3)
 
-        f = f.reshape(batch_size, 16, 16)
-        return c,f
+        x5 = self.block5(x4)
+
+        x = x5.reshape(batch_size, -1)
+
+        x = self.final(x)
+
+        return x, [x1,x2,x3,x4,x5]
 
 
 if __name__ == '__main__':
     img = torch.rand([32,3,128,256])
     d = WeatherClassifier()
-    x = d(img)
+    x,_ = d(img)
     print(x.size())
     print("good！")

@@ -30,8 +30,8 @@ torch.set_num_threads(16)
 parser = argparse.ArgumentParser()
 parser.add_argument('--lidar', type=list, default=['lidar_hdl64_strongest'], help='list of train lidar')
 parser.add_argument('--dataset_path', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog", help='path to the dataset')
-parser.add_argument('--save_epoch', type=int, default=220400, help='saved epoch of the model for test')
-parser.add_argument('--model_path', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/result/weather_classifier/0/save", help='path to the trained model')
+parser.add_argument('--save_epoch', type=int, default=330000, help='saved epoch of the model for test')
+parser.add_argument('--model_path', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/result/classifier/8892/save", help='path to the trained model')
 
 opt = parser.parse_args()
 
@@ -51,6 +51,7 @@ print('device:',device)
 model = WeatherClassifier().to(device)
 print('model:', PATH_TO_MODEL)
 model.load_state_dict(torch.load(PATH_TO_MODEL))
+model.eval()
 
 bar = enumerate(test_loader)
 length = len(test_loader)
@@ -65,7 +66,7 @@ for i, batch in bar:
     input.requires_grad = False
 
 
-    outputs = model(input)  
+    outputs,_ = model(input)  
     pred = np.argmax(outputs.cpu().detach().numpy(), axis=1) 
     label = np.argmax(label.cpu().detach().numpy(), axis=1) 
     # print(pred)
@@ -104,7 +105,7 @@ sns.heatmap(normalized_conf_matrix, annot=False, cmap='Reds', fmt='g')
 
 
 # 设置标题和标签
-plt.title('Confusion Matrix(Accuracy={accuracy})')
+plt.title('Confusion Matrix(Accuracy={})' % (accuracy))
 plt.xlabel('Predicted Label')
 plt.ylabel('True Label')
 

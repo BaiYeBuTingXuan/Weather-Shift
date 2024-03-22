@@ -1,5 +1,10 @@
 # Auther:Hejun WANG
 # -*- coding: utf-8 -*-
+import os
+import sys
+from os.path import join, dirname
+sys.path.insert(0, join(dirname(__file__), '..'))
+
 import torch.nn as nn
 import torch
 from torch.autograd import Variable
@@ -75,7 +80,7 @@ class UNetGenerator(nn.Module):
         Output:
         :return P:Gray Picture of extraction from path,in order to create CostMap
     """
-    def __init__(self, in_channels=3, out_channels=3):
+    def __init__(self, in_channels=3, out_channels=3, weather_num=10, weather_embedding=16):
         super(UNetGenerator, self).__init__()
         # 定义encoder
         self.down1 = UNetDown(in_channels, 64, normalize=False)
@@ -100,6 +105,26 @@ class UNetGenerator(nn.Module):
             nn.ReLU()
         )
 
+        def embeding_block(in_size, out_size):
+            layer = nn.Sequential(nn.Conv2d(in_size, out_size, kernel_size=1, stride=1, bias=False),
+                                  nn.Tanh()
+                                 )
+            return layer
+        
+        self.embedding1 = embeding_block(weather_num, 64)
+        self.embedding2 = embeding_block(64, 128)
+        self.embedding3 = embeding_block(128, 256)
+        self.embedding4 = embeding_block(256, 512)
+        self.embedding5 = embeding_block(512, 512)
+
+    def weather_embedding(self, x):
+        o1 = self.embedding1(x)
+        o2 = self.embedding2(o1)
+        o3 = self.embedding3(o2)
+        o4 = self.embedding4(o3)
+        o5 = self.embedding5(o4)
+        return o1, o2, o3, o4, o5
+
     def merge(self, res, x):
         x[:, 2, :, :] = nn.ReLU()(x[:, 2, :, :] - res[:, 2, :, :])
 
@@ -109,15 +134,21 @@ class UNetGenerator(nn.Module):
         
         return x
 
-    def forward(self, x):
-        d1 = self.down1(x)
-        d2 = self.down2(d1)
-        d3 = self.down3(d2)
-        d4 = self.down4(d3)
-        d5 = self.down5(d4)
+    def forward(self, x, w):
+        '''
+        w batch_size*10
+        x batch_size*128*256
+        '''
+        w = w.unsqueeze(2).unsqueeze(3)
+        w1, w2, w3, w4, w5 = self.weather_embedding(w)
+
+        d1 = self.down1(x) + w1
+        d2 = self.down2(d1) + w2
+        d3 = self.down3(d2) + w3
+        d4 = self.down4(d3) + w4
+        d5 = self.down5(d4) + w5
 
         d6 = self.down6(d5)
-
 
         u1 = self.up1(d6, d5)
         u2 = self.up2(u1, d4)
@@ -135,7 +166,7 @@ class UNetGenerator(nn.Module):
 if __name__ == '__main__':
     g = UNetGenerator()
     img = torch.rand([32, 3, 128, 256])
-
-    img = g(img)
+    w = torch.rand([32, 10])
+    img = g(img,w)
 
     print(img.size())

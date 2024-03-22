@@ -38,11 +38,10 @@ parser.add_argument('--batch_size', type=int, default=32, help='size of the batc
 parser.add_argument('--epoch', type=int, default=0, help='epoch to start training from')
 parser.add_argument('--n_epochs', type=int, default=1000, help='number of epochs of training')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of CPU threads to use during batches generating')
-parser.add_argument('--lr', type=float, default=5e-6, help='learning rate')
+parser.add_argument('--lr', type=float, default=2e-6, help='learning rate')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
-parser.add_argument('--train_time', type=int, default=1e3, help='total training time')
 parser.add_argument('--checkpoints_interval', type=int, default=100, help='interval between model checkpoints')
-parser.add_argument('--clip_value', type=float, default=1, help='Clip value for training to avoid gradient vanishing')
+parser.add_argument('--clip_value', type=float, default=1, help='Clip value for training to avoid gradient explosion')
 opt = parser.parse_args()
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -65,11 +64,16 @@ SAVE_PATH.mkdir(parents=True, exist_ok = True)
 
 description = 'train '+THIS_FILE_NAME+' of '+opt.train_name
 logger = SummaryWriter(log_dir=LOG_PATH)
-write_params(str(LOG_PATH), parser, description)
+write_params(str(LOG_PATH)+r'/', parser, description)
 
 """ model loading """
 model = WeatherClassifier().to(device)
-model.apply(weights_init)
+PATH_TO_MODEL = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/result/classifier/889/save').joinpath('model_330000'+'.pth')
+if PATH_TO_MODEL.is_file():
+    print('load pretrained model')
+    model.load_state_dict(torch.load(PATH_TO_MODEL))
+else:
+    model.apply(weights_init)
 
 """ train dataset loading """
 train_loader = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train'), 

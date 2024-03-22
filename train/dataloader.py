@@ -34,7 +34,7 @@ import itertools
 # parser.add_argument('--random_seed', type=int, default=6, help='random seed')
 # arg = parser.parse_args()
 
-WEATHERS = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night']
+WEATHERS = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night', 'None']
 
 def collate_fn(data):
     # print(collate_fn)
@@ -56,7 +56,7 @@ class SeeingThroughFogDataset(Dataset):
                 mode = 'train',
                 globe_height = 128,
                 globe_width = 256,
-                weathers = WEATHERS,
+                weathers = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night'],
                 lidars = ['lidar_hdl64_strongest']): #  'lidar_vlp32_strongest'
         # self.data_index = data_index
         self.mode = mode
@@ -73,6 +73,7 @@ class SeeingThroughFogDataset(Dataset):
         globe_transforms = [
                 # transforms.Resize((globe_height, globe_width), Image.BICUBIC),
                 transforms.ToTensor(),
+                transforms.Normalize((0.5), (0.5)),
                 transforms.Normalize((0.5), (0.5))
             ]
         if mode == 'train':
@@ -127,7 +128,7 @@ class SeeingThroughFogDataset(Dataset):
         
         # To Tensor
         weather_index_in_WEATHERS = WEATHERS.index(weather)
-        weather= torch.nn.functional.one_hot(torch.tensor(weather_index_in_WEATHERS), num_classes=len(WEATHERS)+1).type(torch.float32)
+        weather= torch.nn.functional.one_hot(torch.tensor(weather_index_in_WEATHERS), num_classes=len(WEATHERS)).type(torch.float32)
 
         globe = self.globe_transforms(globe)
 
