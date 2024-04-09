@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 import sys
 from os.path import join, dirname
 sys.path.insert(0, join(dirname(__file__), '..'))
@@ -19,9 +19,9 @@ from tqdm import tqdm
 import numpy as np
 
 from utils import mkdir, print_warning, write_params
-from train.dataloader import SeeingThroughFogDataset, WEATHERS
+from train.dataloader import SeeingThroughFogDataset2, WEATHERS
 from models import WeatherClassifier,weights_init
-from models.unet import UNetGenerator
+from models.unet import UNetGenerator_Normal as Generator
 
 
 # seed = int(datetime.now().timestamp())
@@ -40,14 +40,15 @@ parser.add_argument('--batch_size', type=int, default=32, help='size of the batc
 parser.add_argument('--epoch', type=int, default=0, help='epoch to start training from')
 parser.add_argument('--n_epochs', type=int, default=1000, help='number of epochs of training')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of CPU threads to use during batches generating')
-parser.add_argument('--lr', type=float, default=3e-5, help='learning rate')
+parser.add_argument('--lr', type=float, default=1e-9, help='learning rate')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--train_time', type=int, default=1e3, help='total training time')
 parser.add_argument('--checkpoints_interval', type=int, default=100, help='interval between model checkpoints')
-parser.add_argument('--clip_value', type=float, default=1, help='Clip value for training to avoid gradient vanishing')
-parser.add_argument('--gamma', type=float, default=1, help='trade-off of L1(Constant Loss) to the CEL(Weather Loss)')
+parser.add_argument('--clip_value', type=float, default=0.1, help='Clip value for training to avoid gradient vanishing')
+parser.add_argument('--gamma', type=float, default=1000, help='trade-off of total style loss to total content loss')
+parser.add_argument('--iota', type=list, default=[1e-5,1,0.4], help='trade-off of items of style loss')
 parser.add_argument('--target_weather', type=str, default='dense_fog_day', help='the weather that we need to simulate')
-parser.add_argument('--path2clser', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog", help='path to the model of dicriminator')
+parser.add_argument('--path2clser', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/models/trained/WeatherClassifier/C.pth", help='path to the model of dicriminator')
 
 opt = parser.parse_args()
 
@@ -74,11 +75,11 @@ logger = SummaryWriter(log_dir=LOG_PATH)
 write_params(str(LOG_PATH), parser, description)
 
 """ generator model loading """
-G = UNetGenerator().to(device)
+G = Generator(in_channels=5).to(device)
 G.apply(weights_init)
 
 """ discriminator model loading """
-D = WeatherClassifier().to(device)
+D = WeatherClassifier(in_channels=5).to(device)
 PATH_TO_MODEL = Path(opt.path2clser)
 if PATH_TO_MODEL.is_file():
     D.load_state_dict(torch.load(PATH_TO_MODEL))
@@ -88,18 +89,13 @@ else:
     print(opt.path2clser)
 
 """ train dataset loading """
-clear_train = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train', weathers=['clear_day']), 
-                                                batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
-
-weathered_train = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train', weathers=['clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night']), 
+train_loader = DataLoader(SeeingThroughFogDataset2(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train'), 
                                                 batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 """ validation dataset loading """
-clear_valid = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='test', weathers=['clear_day']), 
-                                                batch_size=1, shuffle=False, num_workers=1)
-
-weathered_valid = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='test', weathers=['clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night']), 
-                                                batch_size=1, shuffle=False, num_workers=1)
+valid_batch_size=32
+valid_loader = DataLoader(SeeingThroughFogDataset2(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='valid'), 
+                                                batch_size=valid_batch_size, shuffle=False, num_workers=1)
 # test_samples = iter(test_loader)
 
 """ Loss and optimizer """
@@ -113,31 +109,44 @@ L2 = torch.nn.L1Loss().to(device)
 def loss_function(clear, weathered, synthesized):
 
     def gram(x):
-        return torch.matmul(x, x)
+        # b, c, h, w = x.size()
+        # x = x.transpose(0,1,3,2)
+        x = x-torch.mean(x, dim=(-2, -1), keepdim=True) # centerilize
+        x_ = x.transpose(3,2) # centerilize
+        return torch.matmul(x, x_)
 
-    def style_loss(origin, synthesized, layer=0):
-        gram_origin = gram(origin[layer])
-        gram_synthesized = gram(synthesized[layer])
+    def style_loss(origin, synthesized):
+        gram_origin = gram(origin)
+        gram_synthesized = gram(synthesized)
         return L2(gram_origin, gram_synthesized)
 
+    def content_loss(origin, weathered):
+        return L2(origin,  weathered)
 
-    def content_loss(origin, weathered, layer=0):
-        return L2(origin[layer],  weathered[layer])
 
     x = torch.stack([clear, weathered, synthesized], dim=0)
+    _, batch_size, color, height, width = x.size()
+    x = x.reshape(-1, color, height ,width)
     D.eval()
+
     _, f = D(x)
-    f_clear, f_weathered, f_synthesized = f[0:opt.batch_size],f[opt.batch_size, 2*opt.batch_size],f[2*opt.batch_size, 3*opt.batch_size]
-
+    # f1, f2, f3, f4, f5 = f
+    f_clear, f_weathered, f_synthesized = f[0][0:batch_size],f[0][batch_size:2*batch_size],f[0][2*batch_size:3*batch_size]
     content = content_loss(f_clear, f_synthesized)
-    
-    style_1 = style_loss(f_clear, f_weathered, layer=0)
-    style_2 = style_loss(f_clear, f_weathered, layer=1)
-    style_3 = style_loss(f_clear, f_weathered, layer=2)
+    style_0 = style_loss(f_clear, f_weathered)
 
-    style = style_1+style_2+style_3
+    f_clear, f_weathered, f_synthesized = f[1][0:batch_size],f[1][batch_size:2*batch_size],f[1][2*batch_size:3*batch_size]
+    style_1 = style_loss(f_clear, f_weathered)
 
-    return content,style
+    f_clear, f_weathered, f_synthesized = f[2][0:batch_size],f[2][batch_size:2*batch_size],f[3][2*batch_size:3*batch_size]
+    style_2 = style_loss(f_clear, f_weathered)
+
+    # style = style_0+style_1+style_2 [0].unsqueeze(1)
+
+    contents = [content]
+    styles = [style_0, style_1, style_2]
+
+    return contents,styles
 
 
 optimizer = torch.optim.Adam(G.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
@@ -150,40 +159,51 @@ optimizer = torch.optim.Adam(G.parameters(), lr=opt.lr, weight_decay=opt.weight_
 
 def evaluate(total_step):
     G.eval()
-    loss_list = []
-    c_list = []
-    s_list = []
+    loss_dict = {
+        'total' : [],
+        'content' : [],
+        'style' : [],
+        'style_0' : [],
+        'style_1' : [],
+        'style_2' : []
+    }
 
-    for i, batch in enumerate(zip(clear_valid, weathered_valid)):
-        total_step += 1
-            
-        clear = batch_clear['globe'].to(device)
-        weathered = batch_weathered['globe'].to(device)
-        label_weathered = batch_weathered['weather'].to(device)
-            
+    for _, batch in enumerate(valid_loader):
+    
+        clear = batch['source'].to(device)
+        target = batch['target'].to(device)
+        weather = batch['weather'].to(device)
+
+        # print('here')
+
         clear.requires_grad = False
-        label_weathered.requires_grad = False
-        weathered.requires_grad = False
+        target.requires_grad = False
+        weather.requires_grad = False
 
-        fake_weathered = G(clear, label_weathered)
+        fake_weathered,_ = G(clear,weather)
+        # pred_weathered, _ = D(fake_weathered)
 
-        content_loss, sytle_loss = loss_function(clear, weathered, fake_weathered),
+        content_losses, sytle_losses = loss_function(clear, target, fake_weathered)
+        content_0 = content_losses[0]
+        style_0 = sytle_losses[0]
+        style_1 = sytle_losses[1]
+        style_2 = sytle_losses[2]
+
+        content_loss = content_0
+        sytle_loss = opt.iota[0]*style_0+opt.iota[1]*style_1+opt.iota[2]*style_2
         loss = content_loss + sytle_loss * opt.gamma
 
-        c_list.append(content_loss)
-        s_list.append(sytle_loss)
-        loss_list.append(loss)
+        loss_dict['total'].append(loss.item())
+        loss_dict['content'].append(content_loss.item())
+        loss_dict['style'].append(sytle_loss.item())
+        loss_dict['style_0'].append(style_0.item())
+        loss_dict['style_1'].append(style_1.item())
+        loss_dict['style_2'].append(style_2.item())
 
-    c = np.array(c_list).mean()
-    s = np.array(s_list).mean()
-    loss = np.array(loss_list).mean()
-
-    logger.add_scalar('valid/Content Loss',c, total_step)
-    logger.add_scalar('valid/Style Loss',s, total_step)
-    logger.add_scalar('valid/Loss',loss, total_step)
+    for key in loss_dict.keys():
+        logger.add_scalar('valid/'+ key+ '_loss',np.array(loss_dict[key]).mean() , total_step)
 
     G.train()
-
 
 
 if __name__ == '__main__':
@@ -192,24 +212,32 @@ if __name__ == '__main__':
     for epoch in range(opt.epoch, opt.n_epochs):
         print(f"epoch: {epoch}")
 
-        dataLoader = zip(clear_train, weathered_train)
-        bar = enumerate(zip(clear_train, weathered_train))
-        length = len(zip(clear_train, weathered_train))
+        bar = enumerate(train_loader)
+        length = len(train_loader)
         bar = tqdm(bar, total=length)
-        for i, batch_clear, batch_weathered in bar:
+        for i, batch in bar:
             total_step += 1
             
-            clear = batch_clear['globe'].to(device)
-            weathered = batch_weathered['globe'].to(device)
-            label_weathered = batch_weathered['weather'].to(device)
-            
+            clear = batch['source'].to(device)
+            target = batch['target'].to(device)
+            weather = batch['weather'].to(device)
+
+            # print('here')
             clear.requires_grad = True
-            label_weathered.requires_grad = True
-            weathered.requires_grad = False
+            target.requires_grad = False
+            weather.requires_grad = True
 
-            fake_weathered = G(clear,label_weathered)
+            fake_weathered,_ = G(clear,weather)
+            # pred_weathered, _ = D(fake_weathered)
 
-            content_loss, sytle_loss = loss_function(clear, weathered, fake_weathered),
+            content_losses, sytle_losses = loss_function(clear, target, fake_weathered)
+            content_0 = content_losses[0]
+            style_0 = sytle_losses[0]
+            style_1 = sytle_losses[1]
+            style_2 = sytle_losses[2]
+
+            content_loss = content_0
+            sytle_loss = opt.iota[0]*style_0+opt.iota[1]*style_1+opt.iota[2]*style_2
             loss = content_loss + sytle_loss * opt.gamma
 
             optimizer.zero_grad()
@@ -220,9 +248,13 @@ if __name__ == '__main__':
 
             optimizer.step()
 
-            logger.add_scalar('train/CrossEntropyLoss', content_loss.item(), total_step)
-            logger.add_scalar('train/Style Loss', sytle_loss.item(), total_step)
-            logger.add_scalar('train/Loss',loss.item(), total_step)
+            logger.add_scalar('train/total', loss.item(), total_step)
+            logger.add_scalar('train/content', content_loss.item(), total_step)
+            logger.add_scalar('train/style', sytle_loss.item(), total_step)
+            logger.add_scalar('train/style_0', style_0.item(), total_step)
+            logger.add_scalar('train/style_1', style_1.item(), total_step)
+            logger.add_scalar('train/style_2', style_2.item(), total_step)
+
 
             if total_step % opt.checkpoints_interval == 0:
                 str(SAVE_PATH.joinpath('model_%d.pth' % total_step))

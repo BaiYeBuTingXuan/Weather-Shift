@@ -10,10 +10,12 @@ data/
 dataset/
 
 # results of train
-./train/result
+./result/
+./models/trained/*
 
 # Big File
 *.zip
 *.mp4
 *.avi
 *.pth
+*.0

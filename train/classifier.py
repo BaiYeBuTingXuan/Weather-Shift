@@ -20,7 +20,7 @@ import numpy as np
 
 from utils import mkdir, print_warning, write_params
 from train.dataloader import SeeingThroughFogDataset
-from models import WeatherClassifier,weights_init
+from models import WeatherClassifier,weights_init,WeatherClassifier2
 
 # seed = int(datetime.now().timestamp())
 # random.seed(seed)
@@ -36,11 +36,12 @@ parser.add_argument('--lidar', type=list, default=['lidar_hdl64_strongest'], hel
 parser.add_argument('--dataset_path', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog", help='path of the dataset')
 parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
 parser.add_argument('--epoch', type=int, default=0, help='epoch to start training from')
-parser.add_argument('--n_epochs', type=int, default=1000, help='number of epochs of training')
+parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs of training')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of CPU threads to use during batches generating')
 parser.add_argument('--lr', type=float, default=2e-6, help='learning rate')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--checkpoints_interval', type=int, default=100, help='interval between model checkpoints')
+parser.add_argument('--globe_type', type=str, default='globe', help='globe or binormalizing globe')
 parser.add_argument('--clip_value', type=float, default=1, help='Clip value for training to avoid gradient explosion')
 opt = parser.parse_args()
 
@@ -67,8 +68,9 @@ logger = SummaryWriter(log_dir=LOG_PATH)
 write_params(str(LOG_PATH)+r'/', parser, description)
 
 """ model loading """
-model = WeatherClassifier().to(device)
-PATH_TO_MODEL = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/result/classifier/889/save').joinpath('model_330000'+'.pth')
+model = WeatherClassifier(in_channels=5).to(device)
+# PATH_TO_MODEL = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/result/classifier/889/save').joinpath('model_330000'+'.pth')
+PATH_TO_MODEL = Path('/').joinpath('model_330000'+'.pth')
 if PATH_TO_MODEL.is_file():
     print('load pretrained model')
     model.load_state_dict(torch.load(PATH_TO_MODEL))
@@ -80,7 +82,7 @@ train_loader = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), 
                                                 batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 """ validation dataset loading """
-test_loader_batch_size = 256
+test_loader_batch_size = 64
 test_loader = DataLoader(SeeingThroughFogDataset(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='valid'), 
                                                 batch_size=test_loader_batch_size, shuffle=False, num_workers=1)
 # test_samples = iter(test_loader)

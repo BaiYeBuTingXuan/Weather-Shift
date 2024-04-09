@@ -14,16 +14,17 @@ parser.add_argument('--random_seed', type=int, default=6, help='random seed')
 arg = parser.parse_args()
 
 CURRENT_PATH = Path('.')
-STF_LIST_PATH = Path('E:\WeatherSimulation\STF_splits')
+SAVE_PATH = CURRENT_PATH.joinpath('data/Dense/SeeingThroughFog/splits')
+STF_LIST_PATH = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog/splits/origin')
 RNG = np.random.default_rng(seed=arg.random_seed)
 
 assert arg.test_split >= 0 and arg.test_split <= 1, "test_split in [0,1]"
 
 if __name__ == '__main__':
-    CURRENT_PATH.joinpath('splits').mkdir(exist_ok=True)
-    CURRENT_PATH.joinpath('splits/test').mkdir(exist_ok=True)
-    CURRENT_PATH.joinpath('splits/valid').mkdir(exist_ok=True)
-    CURRENT_PATH.joinpath('splits/train').mkdir(exist_ok=True)
+    SAVE_PATH.mkdir(exist_ok=True)
+    SAVE_PATH.joinpath('test').mkdir(exist_ok=True)
+    SAVE_PATH.joinpath('valid').mkdir(exist_ok=True)
+    SAVE_PATH.joinpath('train').mkdir(exist_ok=True)
 
 
     files = list(STF_LIST_PATH.glob('*.txt'))
@@ -37,7 +38,7 @@ if __name__ == '__main__':
 
         with open(file=file,mode="r") as f:
             lines = f.readlines()
-
+            
         test_list = []
         test_len = int(len(lines)*arg.test_split)
         for _ in range(test_len):
@@ -64,12 +65,11 @@ if __name__ == '__main__':
         train_split = file.stem+'.txt'
 
 
-        with open(file=CURRENT_PATH.joinpath('splits/test', test_split), mode="w") as f:
+        with open(file=SAVE_PATH.joinpath('test', test_split), mode="w") as f:
             f.writelines(test_list)
 
-        with open(file=CURRENT_PATH.joinpath('splits/valid', valid_split), mode="w") as f:
+        with open(file=SAVE_PATH.joinpath('valid', valid_split), mode="w") as f:
             f.writelines(valid_list)
 
-        with open(file=CURRENT_PATH.joinpath('splits/train', train_split), mode="w") as f:
+        with open(file=SAVE_PATH.joinpath('train', train_split), mode="w") as f:
             f.writelines(train_list)
-        

@@ -7,13 +7,16 @@ import numpy as np
 from pathlib import Path
 
 from utils import print_warning,ndarray2img
-from utils.math import Cart2Cylin,approx_equal,Cart2Spher,PI
+from utils.math_ import Cart2Cylin,approx_equal,Cart2Spher,Spher2Cart,PI
 
 import cv2
 from tqdm import tqdm
 import itertools
 import torch
 import json
+
+import random
+from utils.gaussian import Gaussian, BiGaussian, JointDistribution2D
 
 class Param:
     def __init__(self, lidar, path2json) -> None:
@@ -76,37 +79,129 @@ def globe_voxelization(pc:np.array, param:Param) ->np.array:
     bound = (min(lats),max(lats))
     
     return voxels.astype(np.float32),bound
-    
 
-def anti_globe_voxelization(globe:np.array, param:Param)->np.array:
+def nor_globe_voxelization(pc:np.array, param:Param) ->np.array:
     '''
-    TODO: Never Debug
-    input: globe latitude_n * longitude_n * 3
-        per pixel : [number of points, average radius of points, average reflected reflectance of points]
+    input: points cloud n*[x,y,z,i]
 
-    output: 
-            points cloud n*[x,y,z,i]
+    output: latitude_n * longitude_n * 6
+        per pixel : [mean_radius, mean_reflectance, var_radius, var_reflectance, rho, length]
 
     latitude : Angle between Point with Z-Positive [-PI/2, PI/2]
     longitude : Angle on XY-Plane (-PI, PI]
 
     '''
-    pc = []
+    pc[:,0:3] = Cart2Spher(x=pc[:,0],y=pc[:,1],z=pc[:,2])
+    # angles = pc[:, 0:2]
 
-    min_bound = np.array([param.latitude_bound[0], param.longitude_bound[0]])
-    max_bound = np.array([param.latitude_bound[1], param.longitude_bound[1]])
-    resolution = (max_bound - min_bound)/np.array([param.latitude_n, param.longitude_n], dtype=float)
+    voxels = np.zeros((param.latitude_n, param.longitude_n, 6), dtype=float)
 
-    for i,j in itertools.product(range(param.latitude_n),range(param.longitude_n)):
-        latitude = param.min_bound[0] + i * param.resolution[0]
-        longitude = param.min_bound[1] + j * param.resolution[1]
-        radius = globe[i,j,1]
-        reflectance = globe[i,j,2]
-        point = np.array([latitude,longitude,radius,reflectance], dtype=float)
-        pc.append(point)
+    voxels_radius_dict = {}
+    voxels_reflectance_dict = {}
 
-    pc = np.stack(pc, axis=0)
-    return pc
+
+    for p in pc:
+        latitude = p[0]
+        longitude = p[1]
+        radius = p[2]
+        reflectance = p[3]
+        # print(p)
+        i = int((latitude-param.min_bound[0]) / param.resolution[0])
+        j = int((longitude-param.min_bound[1]) / param.resolution[1])
+
+        i = min(param.latitude_n-1, i)
+        j = min(param.longitude_n-1, j)
+        
+        if (i,j) not in voxels_radius_dict.keys():
+            voxels_radius_dict[(i,j)] = []
+        voxels_radius_dict[(i,j)].append(radius)
+
+        if (i,j) not in voxels_reflectance_dict.keys():
+            voxels_reflectance_dict[(i,j)] = []
+        voxels_reflectance_dict[(i,j)].append(reflectance)
+
+    for key in voxels_radius_dict.keys():
+        i, j = key[0], key[1]
+        X = voxels_radius_dict[(i,j)]
+        Y = voxels_reflectance_dict[(i,j)]
+
+        assert len(X) == len(Y) # X(radius) and Y(reflectance) have same numbers
+        length = len(X)
+        if length == 1:
+            mean_radius = X[0]
+            mean_reflectance = Y[0]
+            var_radius = 0.0
+            var_reflectance = 0.0
+            rho = 1
+        elif length > 1:
+            cov = np.cov(X, Y) # Varience 
+            mean_radius = np.mean(X)
+            mean_reflectance = np.mean(Y)
+            var_radius = cov[0,0]
+            var_reflectance = cov[1,1]
+            rho = cov[0,1]/np.sqrt(var_radius*var_reflectance+1e-4)
+
+        pixel = np.array([mean_radius, mean_reflectance, var_radius, var_reflectance, rho, length],dtype=float)
+
+        voxels[i,j] = pixel
+
+
+    return voxels.astype(np.float32), None
+    
+
+def anti_globe_voxelization(globe, modified_args, param:Param)->np.array:
+    '''
+    TODO: Some explanation
+
+    '''
+    if modified_args == None:
+        print_warning('modified_args == None')
+        return 0
+    else:
+        points = []
+        alpha,rho, radius,reflectance = modified_args
+        height, width, _ = globe.shape
+        for i,j in zip(range(height),range(width)):
+            latitude = param.resolution[0]*i+param.min_bound[0]
+            longitude = param.resolution[0]*i+param.min_bound[1]
+            # pixel = globe[i][j]
+            obj_mean_radius, obj_mean_reflectance, obj_var_radius, obj_var_reflectance, _, length = globe[i][j]
+
+            length += random.randint(-1, 1)
+            length = max(0,length)
+            if length <= 0:
+                continue
+            else:
+                weather_mean_radius, weather_var_radius = radius[:,i,j]
+                mean_reflectance, var_reflectance = reflectance[:,i,j]+[obj_mean_reflectance, obj_var_reflectance]
+
+                obj_sigma_radius, weather_sigma_radius, sigma_reflectance = \
+                            np.sqrt(np.abs(np.array([obj_var_radius, weather_var_radius, var_reflectance],dtype=float)))
+                 
+                radius_distribution = BiGaussian(mu1=weather_mean_radius, sigma1=weather_sigma_radius, 
+                                                    mu2=obj_mean_radius, sigma2=obj_sigma_radius, alpha=alpha[i][j])
+                # print('x',weather_mean_radius,np.sqrt(abs(weather_var_radius)),obj_mean_radius,np.sqrt(abs(obj_var_radius)),alpha[i][j],length)
+                reflectance_distribution = Gaussian(mu=mean_reflectance,sigma=sigma_reflectance)
+                # print('y',mean_reflectance,np.sqrt(abs(var_reflectance)))
+                joint = JointDistribution2D(distribution_x=radius_distribution, distribution_y=reflectance_distribution, rho=rho[i][j])
+
+                samples = joint.sample(int(length)).transpose()
+                samples = np.abs(samples)
+                for s in samples:
+                    # point = [latitude,longitude,radius,reflectance]
+                    point = []
+                    point.append(latitude + random.random()*param.resolution[0])
+                    point.append(longitude + random.random()*param.resolution[1])
+                    point.append(s[0])
+                    point.append(s[1])
+                    point = np.array(point,dtype=float)
+                    points.append(point)
+
+        points = np.array(points, dtype=float)
+        points[:,0:3] = Spher2Cart(latitude=points[:,0],longitude=points[:,1],radius=points[:,2])
+        return points
+
+
 
 def merge(weather_entities, origin, param):
     '''
