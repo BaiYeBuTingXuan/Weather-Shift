@@ -218,12 +218,12 @@ def read_pcd(file, dataset = 'SeeingThroughFog' ): # TODO：to STF
 
 
 if __name__ == '__main__':
-    LIDAR_NAME = 'lidar_vlp32_strongest' # lidar_vlp32_strongest, lidar_hdl64_strongest(10.-30)
+    LIDAR_NAME = 'lidar_hdl64_strongest' # lidar_vlp32_strongest, lidar_hdl64_strongest(10.-30)
     STF_PATH = Path('I:\Datasets\DENSE\SeeingThroughFog')
     PATH_TO_PARAM = Path('./utils/lidar_param.json')
     PATH_TO_LIDAR = STF_PATH.joinpath(LIDAR_NAME)
 
-    WEIGHT,HEIGHT = 512, 256
+    WEIGHT,HEIGHT = 256, 128
 
     Path('./temp/').mkdir(exist_ok = True)
     videowriter = cv2.VideoWriter('./temp/globe_'+LIDAR_NAME+'.mp4', cv2.VideoWriter_fourcc(*'mp4v'), fps = 10, frameSize=(WEIGHT, HEIGHT))
