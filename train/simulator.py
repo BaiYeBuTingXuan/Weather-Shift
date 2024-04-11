@@ -88,7 +88,7 @@ if PATH_TO_MODEL.is_file():
     D.load_state_dict(torch.load(PATH_TO_MODEL))
 else:
     D.apply(weights_init)
-    print_warning('NOT FOUND model')
+    print_warning('NOT FOUND D model')
     print(opt.path2clser)
 
 # x = torch.rand((32, 5, 128, 256), dtype=torch.float32).to(device)
