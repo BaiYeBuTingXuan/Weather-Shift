@@ -5,7 +5,7 @@ sys.path.insert(0, join(dirname(__file__), '..'))
 import numpy as np
 
 from pathlib import Path
-
+from itertools import product
 from utils import print_warning,ndarray2img
 from utils.math_ import Cart2Cylin,approx_equal,Cart2Spher,Spher2Cart,PI
 
@@ -31,11 +31,20 @@ class Param:
                     value = [eval(v) for v in value]
                     setattr(self, key, value)
 
-
+        self.lidar = lidar
         self.min_bound = np.array([self.latitude_bound[0], self.longitude_bound[0]], dtype=np.float32)
         self.max_bound = np.array([self.latitude_bound[1], self.longitude_bound[1]], dtype=np.float32)
 
         self.resolution = (self.max_bound - self.min_bound)/np.array([self.latitude_n, self.longitude_n], dtype=float)
+
+    def __repr__(self) -> str:
+        result = ''
+        result += 'lidar:%s\n' % self.lidar
+        result += 'num of latittude:%d, and longitude:%s\n' % (self.latitude_n,self.longitude_n)
+        result += 'latitude bound:(%.4f,%.4f)\n' % (self.latitude_bound[0],self.latitude_bound[1])
+        result += 'longitude bound:(%.4f,%.4f)\n' % (self.longitude_bound[0],self.longitude_bound[1])
+        result += 'resolution : (%.4f,%.4f)\n' % (self.resolution[0],self.resolution[1])
+        return result
         
 
 
@@ -92,6 +101,9 @@ def nor_globe_voxelization(pc:np.array, param:Param) ->np.array:
 
     '''
     pc[:,0:3] = Cart2Spher(x=pc[:,0],y=pc[:,1],z=pc[:,2])
+    # print(pc[30])
+    # for p in pc:
+    #     print(p)
     # angles = pc[:, 0:2]
 
     voxels = np.zeros((param.latitude_n, param.longitude_n, 6), dtype=float)
@@ -102,6 +114,7 @@ def nor_globe_voxelization(pc:np.array, param:Param) ->np.array:
 
     for p in pc:
         latitude = p[0]
+        # print('1',latitude < 0)
         longitude = p[1]
         radius = p[2]
         reflectance = p[3]
@@ -119,7 +132,6 @@ def nor_globe_voxelization(pc:np.array, param:Param) ->np.array:
         if (i,j) not in voxels_reflectance_dict.keys():
             voxels_reflectance_dict[(i,j)] = []
         voxels_reflectance_dict[(i,j)].append(reflectance)
-
     for key in voxels_radius_dict.keys():
         i, j = key[0], key[1]
         X = voxels_radius_dict[(i,j)]
@@ -142,11 +154,11 @@ def nor_globe_voxelization(pc:np.array, param:Param) ->np.array:
             rho = cov[0,1]/np.sqrt(var_radius*var_reflectance+1e-4)
 
         pixel = np.array([mean_radius, mean_reflectance, var_radius, var_reflectance, rho, length],dtype=float)
-
+        # print(mean_radius)
         voxels[i,j] = pixel
 
 
-    return voxels.astype(np.float32), None
+    return voxels.astype(np.float32), (voxels_radius_dict,voxels_reflectance_dict)
     
 
 def anti_globe_voxelization(globe, modified_args, param:Param)->np.array:
@@ -154,18 +166,22 @@ def anti_globe_voxelization(globe, modified_args, param:Param)->np.array:
     TODO: Some explanation
 
     '''
+        
     if modified_args == None:
         print_warning('modified_args == None')
         return 0
     else:
         points = []
-        alpha,rho, radius,reflectance = modified_args
+        alpha, radius,reflectance = modified_args
         height, width, _ = globe.shape
-        for i,j in zip(range(height),range(width)):
+        for i, j in product(range(height), range(width)):
             latitude = param.resolution[0]*i+param.min_bound[0]
-            longitude = param.resolution[0]*i+param.min_bound[1]
+            longitude = param.resolution[1]*j+param.min_bound[1]
             # pixel = globe[i][j]
             obj_mean_radius, obj_mean_reflectance, obj_var_radius, obj_var_reflectance, _, length = globe[i][j]
+            # print(obj_mean_radius,obj_var_radius)
+            if obj_mean_radius == 0:
+                continue
 
             length += random.randint(-1, 1)
             length = max(0,length)
@@ -173,7 +189,7 @@ def anti_globe_voxelization(globe, modified_args, param:Param)->np.array:
                 continue
             else:
                 weather_mean_radius, weather_var_radius = radius[:,i,j]
-                mean_reflectance, var_reflectance = reflectance[:,i,j]+[obj_mean_reflectance, obj_var_reflectance]
+                mean_reflectance, var_reflectance = reflectance[:,i,j]+np.array([obj_mean_reflectance, obj_var_reflectance],dtype=float)
 
                 obj_sigma_radius, weather_sigma_radius, sigma_reflectance = \
                             np.sqrt(np.abs(np.array([obj_var_radius, weather_var_radius, var_reflectance],dtype=float)))
@@ -183,9 +199,9 @@ def anti_globe_voxelization(globe, modified_args, param:Param)->np.array:
                 # print('x',weather_mean_radius,np.sqrt(abs(weather_var_radius)),obj_mean_radius,np.sqrt(abs(obj_var_radius)),alpha[i][j],length)
                 reflectance_distribution = Gaussian(mu=mean_reflectance,sigma=sigma_reflectance)
                 # print('y',mean_reflectance,np.sqrt(abs(var_reflectance)))
-                joint = JointDistribution2D(distribution_x=radius_distribution, distribution_y=reflectance_distribution, rho=rho[i][j])
+                joint = JointDistribution2D(distribution_x=radius_distribution, distribution_y=reflectance_distribution, rho=0)
 
-                samples = joint.sample(int(length)).transpose()
+                samples = joint.sample(int(length),bound=[0,1000,0,200]).transpose()
                 samples = np.abs(samples)
                 for s in samples:
                     # point = [latitude,longitude,radius,reflectance]
@@ -199,7 +215,92 @@ def anti_globe_voxelization(globe, modified_args, param:Param)->np.array:
 
         points = np.array(points, dtype=float)
         points[:,0:3] = Spher2Cart(latitude=points[:,0],longitude=points[:,1],radius=points[:,2])
+        has_nan = np.isnan(points).any()
+        has_inf = np.isinf(points).any()
+        if has_nan:
+            print('points has_nan')
+        if has_inf:
+            print('points has_inf')
+
         return points
+    
+
+def quick_anti_globe_voxelization(pc, modified_args, param:Param)->np.array:
+    '''
+    TODO: Some explanation
+    '''
+    alpha, radius,reflectance = modified_args
+    if modified_args == None:
+        print_warning('modified_args == None')
+        return 0
+    
+    # pc[:,0:3] = Cart2Spher(x=pc[:,0],y=pc[:,1],z=pc[:,2])
+    # pc has been to Cart
+    points = []
+    point_dict = {}
+    number_change = 0
+    for p in pc:
+        latitude = p[0]
+        # print('2',latitude < 0)
+        longitude = p[1]
+        # print(p)
+        i = int((latitude-param.min_bound[0]) / param.resolution[0])
+        j = int((longitude-param.min_bound[1]) / param.resolution[1])
+
+        i = min(param.latitude_n-1, i)
+        j = min(param.longitude_n-1, j)
+
+        if (i,j) not in point_dict.keys():
+            point_dict[(i,j)] = []
+        point_dict[(i,j)].append(p)
+
+    for key in point_dict:
+        i, j = key
+        points_in_direction = point_dict[key]
+        points_in_direction = np.array(points_in_direction, dtype=float)
+        # print(points_in_direction)
+
+        length = points_in_direction.shape[0]
+        
+        weather_mean_radius, weather_var_radius = radius[:,i,j]
+        weather_sigma_radius = \
+                            np.sqrt(np.abs(np.array([weather_var_radius],dtype=float)))
+
+        radius_distribution = Gaussian(mu=weather_mean_radius, sigma=weather_sigma_radius)
+        
+        mean_reflectance, var_reflectance = reflectance[:,i,j]
+        mean_reflectance += np.mean(points_in_direction[:,3])
+        var_reflectance += np.var(points_in_direction[:,3],ddof=1)
+
+        sigma_reflectance = \
+                        np.sqrt(np.abs(np.array([var_reflectance],dtype=float)))
+                 
+                # print('x',weather_mean_radius,np.sqrt(abs(weather_var_radius)),obj_mean_radius,np.sqrt(abs(obj_var_radius)),alpha[i][j],length)
+        reflectance_distribution = Gaussian(mu=mean_reflectance,sigma=sigma_reflectance)
+
+        points_in_direction[:,3] += reflectance_distribution.sample(num=length)
+
+        mask = np.array([(random.random() < alpha[i][j]) for _ in range(length)],dtype=bool)
+        number_change += np.sum(mask)
+        points_in_direction[mask,2] = radius_distribution.sample(num=np.sum(mask))
+        # points_in_direction[mask,2] = np.minimum(np.maximum(radius_distribution.sample(num=np.sum(mask)), 0.1),200)
+        # print(len(points_in_direction))
+        points.append(points_in_direction)
+
+    points = np.vstack(points)
+    points[:,0:3] = Spher2Cart(latitude=points[:,0],longitude=points[:,1],radius=points[:,2])
+    has_nan = np.isnan(points).any()
+    has_inf = np.isinf(points).any()
+    if has_nan:
+        print('points has_nan')
+    if has_inf:
+        print('points has_inf')
+
+    return points,number_change
+
+
+
+        # return points
 
 
 
@@ -273,7 +374,17 @@ def read_pcd(file, dataset = 'SeeingThroughFog' ): # TODO：to STF
 
     if (os.path.isfile(file)):
         if dataset == 'SeeingThroughFog':
-            pointcloud = np.fromfile(file, dtype=np.float32)
+            try:
+                pointcloud = np.fromfile(file, dtype=np.float32)
+            except:
+                print_warning('error in read in {file}')
+            # pointcloud = np.load(file, allow_pickle=True)
+            # has_inf = np.isinf(tensor).any()
+            # has_nan = np.isnan(tensor).any()
+            # if has_inf or has_nan:
+            #     print(pointcloud)
+            #     print(np.isnan(tensor))
+            #     print('====================')
             try:
                 pointcloud = pointcloud.reshape((-1, 5))
             except Exception:
@@ -314,7 +425,7 @@ def read_pcd(file, dataset = 'SeeingThroughFog' ): # TODO：to STF
 
 if __name__ == '__main__':
     LIDAR_NAME = 'lidar_vlp32_strongest' # lidar_vlp32_strongest, lidar_hdl64_strongest(10.-30)
-    STF_PATH = Path('I:\Datasets\DENSE\SeeingThroughFog')
+    STF_PATH = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog/cloud')
     PATH_TO_PARAM = Path('./utils/lidar_param.json')
     PATH_TO_LIDAR = STF_PATH.joinpath(LIDAR_NAME)
 
@@ -345,8 +456,10 @@ if __name__ == '__main__':
             bar.desc = str(file.stem)
             pc = read_pcd(file)
             # print(pc.shape)
-            frame, bound = globe_voxelization(pc, param=param)
-            frame = ndarray2img(frame)
+            frame, bound = nor_globe_voxelization(pc, param=param)
+            print(frame[88,162,:])
+            frame = ndarray2img(frame[:,:,[0,1,4]])
+
             cv2.putText(img=frame, text=file.stem, org=(0, 25), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=.5, color=(255, 255, 255), thickness=2)
             videowriter.write(frame)
             # cv2.imshow('voxels', frame)

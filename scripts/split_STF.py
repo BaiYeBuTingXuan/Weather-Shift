@@ -8,14 +8,14 @@ import numpy as np
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--test_split', type=float, default=0.1, help='rate of test file')
-parser.add_argument('--valid_split', type=float, default=0.1, help='rate of validation file')
+parser.add_argument('--test_split', type=float, default=0.2, help='rate of test file')
+parser.add_argument('--valid_split', type=float, default=0.2, help='rate of validation file')
 parser.add_argument('--random_seed', type=int, default=6, help='random seed')
 arg = parser.parse_args()
 
 CURRENT_PATH = Path('.')
 SAVE_PATH = CURRENT_PATH.joinpath('data/Dense/SeeingThroughFog/splits')
-STF_LIST_PATH = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog/splits/origin')
+STF_LIST_PATH = SAVE_PATH.joinpath('/origin')
 RNG = np.random.default_rng(seed=arg.random_seed)
 
 assert arg.test_split >= 0 and arg.test_split <= 1, "test_split in [0,1]"

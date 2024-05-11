@@ -54,8 +54,8 @@ class SeeingThroughFogDataset(Dataset):
                 dataset_path='I:\Datasets\DENSE\SeeingThroughFog', 
                 splits_path=r'./splits', 
                 mode = 'train',
-                globe_height = 128,
-                globe_width = 256,
+                globe_height = 64,
+                globe_width = 128,
                 weathers = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night'],
                 lidars = ['lidar_hdl64_strongest']): #  'lidar_vlp32_strongest'
         # self.data_index = data_index
@@ -96,11 +96,11 @@ class SeeingThroughFogDataset(Dataset):
 
     def read_globe(self, path):
         globe = np.load(path)
-        globe = globe[:,:,0:5]
+        globe = globe[:,:,0:4]
         
         # print(globe.shape)
         # globe = globe.transpose(2,1,0)
-        if globe.shape == (self.height, self.width, 5):
+        if globe.shape == (self.height, self.width, 4):
             pass
         else:
             globe = np.resize(globe, (self.height, self.width, 5))
@@ -157,8 +157,8 @@ class SeeingThroughFogDataset2(Dataset):
                 dataset_path='I:\Datasets\DENSE\SeeingThroughFog', 
                 splits_path=r'.\data/Dense/SeeingThroughFog/splits', 
                 mode = 'train',
-                globe_height = 128,
-                globe_width = 256,
+                globe_height = 64,
+                globe_width = 128,
                 src_weather = 'clear_day',
                 tgt_weathers = ['clear_day', 'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night'],
                 lidars = ['lidar_hdl64_strongest']): #  'lidar_vlp32_strongest'
@@ -207,13 +207,14 @@ class SeeingThroughFogDataset2(Dataset):
     def read_globe(self, path):
         globe = np.load(path)
         # print(globe)
-        globe = globe[:,:,0:5]
+        globe = globe[:,:,0:4]
         # globe = globe.transpose(2,1,0)
-        if globe.shape == (self.height, self.width, 5):
+        if globe.shape == (self.height, self.width,4):
             pass
         else:
             globe = np.resize(globe, (self.height, self.width, 5))
-            print_warning('Shape of the globe is not ({self.height}, {self.width}, 5)')
+            print_warning(f'Shape of the globe is not ({self.height}, {self.width}, 5)')
+            print(globe.shape)
             print(str(path))
 
         return globe
@@ -228,12 +229,13 @@ class SeeingThroughFogDataset2(Dataset):
         src_globe_name = random.choice(self.npy_list[lidar][self.src_weather])
         
         GLOBE_PATH = Path(self.dataset_path).joinpath(lidar).joinpath(src_globe_name +'.npy')
-        if GLOBE_PATH.is_file:
+        if GLOBE_PATH.is_file():
+            # print(GLOBE_PATH)
             src_globe = self.read_globe(GLOBE_PATH)
             # globe = Image.fromarray(globe)
             
         else:
-            print_warning('NOT GET', str(GLOBE_PATH))
+            print_warning('NOT GET' + str(GLOBE_PATH))
             return self.__getitem__(1)
         
         tgt_weather_index = random.choice(range(len(self.tgt_weathers)))

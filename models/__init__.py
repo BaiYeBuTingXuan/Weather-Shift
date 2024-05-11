@@ -9,9 +9,9 @@ from torch.autograd import Variable
 def weights_init(m):
     class_name = m.__class__.__name__
     if class_name.find('Conv') != -1:
-        torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
+        torch.nn.init.normal_(m.weight.data, 0.0, 0.20)
     elif class_name.find('BatchNorm2d') != -1:
-        torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
+        torch.nn.init.normal_(m.weight.data, 1.0, 0.20)
         torch.nn.init.constant_(m.bias.data, 0.0)
 
 
@@ -140,7 +140,7 @@ class WeatherClassifier(nn.Module):
     
 
 class WeatherClassifier2(nn.Module):
-    def __init__(self, in_channels=3, out_channel=9+1):
+    def __init__(self, in_channels=4, out_channel=9+1):
         super(WeatherClassifier2, self).__init__()
 
         # 定义Discriminator的单元结构
@@ -188,6 +188,8 @@ class WeatherClassifier2(nn.Module):
         )
 
         self.final = nn.Sequential(
+            nn.Linear(1024, 512, bias=False),
+            nn.Tanh(),
             nn.Linear(512, out_channel, bias=False),
             nn.Softmax(dim=1)
         )
@@ -205,18 +207,18 @@ class WeatherClassifier2(nn.Module):
         # print(x3.size())
         x4 = self.block4(x3)
         # print(x4.size())
-        x5 = self.block5(x4)
+        # x5 = self.block5(x4)
         # print(x5.size())
-        x = x5.reshape(batch_size, -1)
+        x = x4.reshape(batch_size, -1)
 
         x = self.final(x)
 
-        return x, [x1,x2,x3,x4,x5]
+        return x, [x1,x2,x3,x4]
 
 
 if __name__ == '__main__':
-    img = torch.rand([32,3,512,1024])
-    d = WeatherClassifier()
+    img = torch.rand([32,5,64,128])
+    d = WeatherClassifier2()
     x,_ = d(img)
     print(x.size())
     print("good！")

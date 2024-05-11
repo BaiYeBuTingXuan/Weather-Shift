@@ -21,7 +21,9 @@ import numpy as np
 from utils import mkdir, print_warning, write_params
 from train.dataloader import SeeingThroughFogDataset, SeeingThroughFogDataset2, WEATHERS
 from models import WeatherClassifier,WeatherClassifier2, weights_init
-from models.unet import UNetGenerator_Normal as Generator
+from models.unet import UNetGenerator_Normal,UNetGenerator_Normal2
+from models.loss_func import InvExp_Loss
+
 
 torch.autograd.set_detect_anomaly(True)
 # seed = int(datetime.now().timestamp())
@@ -40,15 +42,23 @@ parser.add_argument('--batch_size', type=int, default=32, help='size of the batc
 parser.add_argument('--epoch', type=int, default=0, help='epoch to start training from')
 parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs of training')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of CPU threads to use during batches generating')
-parser.add_argument('--lr', type=float, default=3e-6, help='learning rate')
+parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
 parser.add_argument('--train_time', type=int, default=1e3, help='total training time')
 parser.add_argument('--checkpoints_interval', type=int, default=1000, help='interval between model checkpoints')
 parser.add_argument('--clip_value', type=float, default=1, help='Clip value for training to avoid gradient vanishing')
-parser.add_argument('--gamma', type=float, default=0.001, help='trade-off of L1(Constant Loss) to the CEL(Weather Loss)')
+parser.add_argument('--gamma1', type=float, default=1.717, help='trade-off of InvExp(Constant Loss) to the CEL(Weather Loss)')
+parser.add_argument('--gamma2', type=float, default=4, help='trade-off of L1(Constant Loss) to the CEL(Weather Loss)')
+
 parser.add_argument('--target_weather', type=str, default='dense_fog_day', help='the weather that we need to simulate')
+parser.add_argument('--sigma', type=str, default=0.1, help='sigma of Bell loss')
+# parser.add_argument('--lidar', type=list, default=['lidar_vlp32_strongest'], help='lidar to train(lidar_hdl64_strongest,lidar_vlp32_strongest)')
+
+
 # parser.add_argument('--globe_type', type=str, default='globe_nor', help='globe or binormalizing globe')
-parser.add_argument('--path2clser', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/models/trained/WeatherClassifier/C.pth", help='path to the model of dicriminator')
+parser.add_argument('--path2clser', type=str, default="/data2/wanghejun/WeatherShift/main/models/trained/WeatherClassifier/G_C.pth", help='path to the model of dicriminator')
+# parser.add_argument('--path2clser', type=str, default="-", help='path to the model of dicriminator')
+
 opt = parser.parse_args()
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -78,18 +88,24 @@ logger = SummaryWriter(log_dir=LOG_PATH)
 write_params(str(LOG_PATH), parser, description)
 
 """ generator model loading """
-G = Generator(in_channels=5).to(device)
-G.apply(weights_init)
+G = UNetGenerator_Normal(in_channels=4).to(device)
+# PATH_TO_MODEL = Path('/data2/wanghejun/WeatherShift/main/models/trained/Simulator/model_349000.pth')
+PATH_TO_MODEL = Path('/data2/wanghejun/WeatherShift/main/models/trained/Simulator/model_200000.pth')
+if PATH_TO_MODEL.is_file():
+    G.load_state_dict(torch.load(PATH_TO_MODEL))
+else:
+    G.apply(weights_init)
+    print_warning('NOT FOUND G model')
 
 """ discriminator model loading """
-D = WeatherClassifier(in_channels=5).to(device)
-PATH_TO_MODEL = Path(opt.path2clser)
+D = WeatherClassifier2(in_channels=4).to(device)
+# PATH_TO_MODEL = Path('/data2/wanghejun/WeatherShift/main/models/trained/WeatherClassifier/model_349000.pth')
+PATH_TO_MODEL = Path('/data2/wanghejun/WeatherShift/main/models/trained/WeatherClassifier/model_200000.pth')
 if PATH_TO_MODEL.is_file():
     D.load_state_dict(torch.load(PATH_TO_MODEL))
 else:
     D.apply(weights_init)
     print_warning('NOT FOUND D model')
-    print(opt.path2clser)
 
 # x = torch.rand((32, 5, 128, 256), dtype=torch.float32).to(device)
 # w = torch.rand([32, 10]).to(device)
@@ -102,14 +118,13 @@ else:
 # logger.add_graph(traced_model_D, (x, w))
 
 """ train dataset loading """
-train_loader = DataLoader(SeeingThroughFogDataset2(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train'), 
+train_loader = DataLoader(SeeingThroughFogDataset2(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='train', lidars=['lidar_hdl64_strongest']), 
                                                 batch_size=opt.batch_size, shuffle=False, num_workers=opt.n_cpu)
 
 """ validation dataset loading """
-valid_batch_size=64
-valid_loader = DataLoader(SeeingThroughFogDataset2(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='valid'), 
+valid_batch_size=256
+valid_loader = DataLoader(SeeingThroughFogDataset2(splits_path=str(SPLITS_PATH), dataset_path=PATH_TO_GLOBE, mode='valid', lidars=['lidar_hdl64_strongest']), 
                                                 batch_size=valid_batch_size, shuffle=False, num_workers=1)
-
 
 
 """ Loss and optimizer """
@@ -117,11 +132,11 @@ valid_loader = DataLoader(SeeingThroughFogDataset2(splits_path=str(SPLITS_PATH),
 # def criterion(pred_weathered, label_weathered):
 
 CrossEntropyLoss = torch.nn.CrossEntropyLoss().to(device)
-L1Loss = torch.nn.L1Loss().to(device)
-
+InvExploss = InvExp_Loss(sigma=opt.sigma).to(device)
+L1loss = torch.nn.MSELoss().to(device)
 
 optimizer_G = torch.optim.Adam(G.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
-optimizer_D = torch.optim.Adam(G.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
+optimizer_D = torch.optim.Adam(D.parameters(), lr=opt.lr, weight_decay=opt.weight_decay)
 
 
 
@@ -139,7 +154,8 @@ def evaluate(total_step):
     loss_dict = {
         'G_total' : [],
         'G_CrossEntropyLoss' : [],
-        'G_L1' : [],
+        'G_InvExp' : [],
+        'G_l1' : [],
         'D_total' : [],
         'D_fake' : [],
         'D_real' : []
@@ -152,29 +168,33 @@ def evaluate(total_step):
         weathered =batch['target'].to(device)
         label_weathered = batch['weather'].to(device)
         # print('here')
+        # print(label_weathered[0])
 
         clear.requires_grad = False
         label_weathered.requires_grad = False
 
-        fake_weathered,_ = G(clear,label_weathered)
+        fake_weathered,extra = G(clear,label_weathered)
         pred_fake, _ = D(fake_weathered)
         pred_real, _ = D(weathered)
-
-
+        alpha = extra[0]
+        radius = extra[1]
         cel = CrossEntropyLoss(pred_fake, label_weathered)
-        l1 =  L1Loss(clear, fake_weathered)
-        loss_G = cel + l1 * opt.gamma
+        ie =  InvExploss(radius)
+        l1 = L1loss(alpha,torch.zeros_like(alpha))
+        loss_G = cel + ie * opt.gamma1 + l1 * opt.gamma2
 
         label_of_None_for_test = torch.stack([label_clear] * pred_fake.size()[0], dim=0)
 
 
         fake = CrossEntropyLoss(pred_fake, label_of_None_for_test)
         real = CrossEntropyLoss(pred_real, label_weathered)
-        loss_D = fake + real*(1/9)
+        loss_D = fake + real
 
         loss_dict['G_total'].append(loss_G.item())
         loss_dict['G_CrossEntropyLoss'].append(cel.item())
-        loss_dict['G_L1'].append(loss_G.item())
+        loss_dict['G_InvExp'].append(ie.item())
+        loss_dict['G_l1'].append(l1.item())
+
         loss_dict['D_total'].append(loss_D.item())
         loss_dict['D_fake'].append(fake.item())
         loss_dict['D_real'].append(real.item())
@@ -183,6 +203,21 @@ def evaluate(total_step):
     for key in loss_dict.keys():
         value = np.array(loss_dict[key]).mean()
         logger.add_scalar('valid/'+key,value, total_step)
+    
+    
+    alpha,radius,reflectance = extra
+    mu = radius[:,0,:,:]
+    var = radius[:,1,:,:]
+
+    logger.add_histogram('valid/radius_mu', mu, total_step)
+    logger.add_histogram('valid/radius_var', var, total_step)
+
+    logger.add_histogram('valid/alpha', alpha, total_step)
+
+    mu = reflectance[:,0,:,:]
+    var = reflectance[:,1,:,:]
+    logger.add_histogram('valid/reflectance_mu', mu, total_step)
+    logger.add_histogram('valid/reflectance_var', var, total_step)
 
     G.train()
     D.train()
@@ -190,7 +225,7 @@ def evaluate(total_step):
     
 
 if __name__ == '__main__':
-    total_step = 0
+    total_step = -1
 
     for epoch in range(opt.epoch, opt.n_epochs):
         print(f"epoch: {epoch}")
@@ -210,13 +245,17 @@ if __name__ == '__main__':
             weathered.requires_grad = True
             label_weathered.requires_grad = True
 
-            fake_weathered,_ = G(clear, label_weathered)
+            fake_weathered,extra = G(clear, label_weathered)
             pred_fake,_ = D(fake_weathered)
 
-
+            alpha = extra[0]
+            radius = extra[1]
             cel = CrossEntropyLoss(pred_fake, label_weathered)
-            l1 =  L1Loss(clear, fake_weathered)
-            loss_G = cel + l1 * opt.gamma
+            ie =  InvExploss(radius)
+            l1 = L1loss(alpha,torch.zeros_like(alpha))
+            loss_G = cel + ie * opt.gamma1 + l1 * opt.gamma2
+            
+
             # loss = l1
             optimizer_G.zero_grad()
 
@@ -226,9 +265,16 @@ if __name__ == '__main__':
 
             optimizer_G.step()
 
+            # print(ie.item())
+            # print(cel.item())
+            # print(opt.gamma1)
+            # print(l1.item())
+            # print(loss_G.item())
+            # print('xx')
 
             logger.add_scalar('train/G/CrossEntropyLoss',cel.item(), total_step)
-            logger.add_scalar('train/G/L1Loss',l1.item(), total_step)
+            logger.add_scalar('train/G/InvExpLoss',ie.item(), total_step)
+            logger.add_scalar('train/G/l1',l1.item(), total_step)
             logger.add_scalar('train/G/loss',loss_G.item(), total_step)
 
             pred_fake,_ = D(fake_weathered.detach()) # OR  RuntimeError: Trying to backward through the graph a second time 
@@ -236,7 +282,7 @@ if __name__ == '__main__':
 
             fake = CrossEntropyLoss(pred_fake, label_of_None)
             real = CrossEntropyLoss(pred_real, label_weathered)
-            loss_D = fake + real*(1/9)
+            loss_D = fake*(1/10) + real
 
             optimizer_D.zero_grad()
 
@@ -252,10 +298,9 @@ if __name__ == '__main__':
 
             if total_step % opt.checkpoints_interval == 0:
                 torch.save(G.state_dict(), G_SAVE_PATH.joinpath('model_%d.pth' % total_step))
-                evaluate(total_step)
-            if total_step % opt.checkpoints_interval == 0:
                 torch.save(D.state_dict(), D_SAVE_PATH.joinpath('model_%d.pth' % total_step))
                 evaluate(total_step)
+
 
 
 

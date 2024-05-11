@@ -36,7 +36,7 @@ parser.add_argument('--lidar', type=list, default=['lidar_hdl64_strongest'], hel
 parser.add_argument('--dataset_path', type=str, default="/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog", help='path of the dataset')
 parser.add_argument('--batch_size', type=int, default=32, help='size of the batches')
 parser.add_argument('--epoch', type=int, default=0, help='epoch to start training from')
-parser.add_argument('--n_epochs', type=int, default=100, help='number of epochs of training')
+parser.add_argument('--n_epochs', type=int, default=5000, help='number of epochs of training')
 parser.add_argument('--n_cpu', type=int, default=16, help='number of CPU threads to use during batches generating')
 parser.add_argument('--lr', type=float, default=2e-6, help='learning rate')
 parser.add_argument('--weight_decay', type=float, default=5e-4, help='adam: weight_decay')
@@ -68,7 +68,7 @@ logger = SummaryWriter(log_dir=LOG_PATH)
 write_params(str(LOG_PATH)+r'/', parser, description)
 
 """ model loading """
-model = WeatherClassifier(in_channels=5).to(device)
+model = WeatherClassifier2(in_channels=4).to(device)
 # PATH_TO_MODEL = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/result/classifier/889/save').joinpath('model_330000'+'.pth')
 PATH_TO_MODEL = Path('/').joinpath('model_330000'+'.pth')
 if PATH_TO_MODEL.is_file():

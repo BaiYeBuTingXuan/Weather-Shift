@@ -17,7 +17,7 @@ import itertools
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lidar_name', type=str, default="lidar_hdl64_strongest", help='name of the lidar')
+parser.add_argument('--lidar_name', type=str, default="lidar_hdl64_last", help='name of the lidar') # lidar_hdl64_strongest lidar_vlp32_strongest
 args = parser.parse_args()
 
 STF_PATH = Path('/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog')
@@ -39,7 +39,8 @@ if __name__ == '__main__':
         sys.exit()
 
     param = Param(args.lidar_name, PATH_TO_PARAM)
-    print('lidar name:', args.lidar_name)
+    print(param)
+    # print('lidar name:', args.lidar_name)
     bar = enumerate(files)
     bar = tqdm(bar, desc="Processing", total=len(files))
     try:
@@ -50,7 +51,7 @@ if __name__ == '__main__':
             # print(frame.shape)
             # frame = ndarray2img(frame)    
             np.save(str(SAVE_PATH.joinpath(file.stem+'.npy')), frame)
-
+            # print(SAVE_PATH.joinpath(file.stem+'.npy'))
             # cv2.imwrite(str(SAVE_PATH.joinpath(file.stem+'.bin')), frame)
             # cv2.waitKey(0)
     except KeyboardInterrupt:

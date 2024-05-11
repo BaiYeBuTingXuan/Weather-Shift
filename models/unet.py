@@ -322,7 +322,7 @@ class UNetGenerator_Normal(nn.Module):
         Output:
         :return P:Gray Picture of extraction from path,in order to create CostMap
     """
-    def __init__(self, in_channels=5, out_channels=6, weather_num=10, scale=1e2):
+    def __init__(self, in_channels=5, out_channels=6, weather_num=10, scale=128):
         super(UNetGenerator_Normal, self).__init__()
 
         self.normalize = nn.BatchNorm2d(num_features=in_channels)
@@ -331,17 +331,16 @@ class UNetGenerator_Normal(nn.Module):
 
     def activate(self, r):
         #         0              1               2          3                4   5
-        # r = [mean_radius, mean_reflectance, var_radius, var_reflectance, rho, alpha]
+        # r = [mean_radius, mean_reflectance, var_radius, var_reflectance, alpha]
 
-        alpha = nn.Sigmoid()(r[:,5,:,:])
-        rho = nn.Tanh()(r[:,4,:,:]*self.scale)
+        alpha = nn.Sigmoid()(r[:,4,:,:])
         radius = nn.ReLU()(r[:,[0,2],:,:])*self.scale
-        reflectance = nn.Tanh()(r[:,[1,2],:,:])*self.scale
+        reflectance = nn.Tanh()(r[:,[1,3],:,:])*self.scale
 
         
-        return alpha,rho,radius,reflectance
+        return alpha,radius,reflectance
 
-    def merge(self, x, alpha, rho, radius, reflectance):
+    def merge(self, x, alpha, radius, reflectance):
         #         0              1               2          3                4 
         # x = [mean_radius, mean_reflectance, var_radius, var_reflectance, rho]
         #                        0              1              
@@ -352,11 +351,11 @@ class UNetGenerator_Normal(nn.Module):
         mean_radius =  radius[:,0,:,:]*alpha + x[:,0,:,:]*(1-alpha)
         mean_reflectance = x[:,1,:,:] + reflectance[:,0,:,:]
 
-        var_radius = radius[:,1,:,:]*alpha + x[:,2,:,:]*(1-alpha) + alpha*(1-alpha)*(radius[:,0,:,:]-x[:,0,:,:])*(radius[:,0,:,:]-x[:,0,:,:])
-        var_reflectance = x[:,3,:,:] +reflectance[:,1,:,:]
+        var_radius = alpha*radius[:,1,:,:] + (1-alpha)*x[:,2,:,:] + 2*alpha*(1-alpha)*(radius[:,0,:,:]-x[:,0,:,:])*(radius[:,0,:,:]-x[:,0,:,:])
+        var_reflectance = x[:,3,:,:] + reflectance[:,1,:,:]
         # rho = rho
 
-        z = torch.cat((mean_radius.unsqueeze(1), mean_reflectance.unsqueeze(1), var_radius.unsqueeze(1), var_reflectance.unsqueeze(1), rho.unsqueeze(1)), dim=1)
+        z = torch.cat((mean_radius.unsqueeze(1), mean_reflectance.unsqueeze(1), var_radius.unsqueeze(1), var_reflectance.unsqueeze(1)), dim=1)
         
         return z
 
@@ -369,26 +368,87 @@ class UNetGenerator_Normal(nn.Module):
         x = self.normalize(x)
         r = self.unet(x,w)
 
-        alpha,rho,radius,reflectance = self.activate(r)
+        alpha,radius,reflectance = self.activate(r)
 
-        x = self.merge(x,alpha,rho,radius,reflectance)
+        x = self.merge(x,alpha,radius,reflectance)
 
-        return x,(alpha,rho,radius,reflectance)
+        return x,(alpha,radius,reflectance)
+    
+
+class UNetGenerator_Normal2(nn.Module):
+    """
+        Total Network from Image、Route to Path Graph
+        Input(RGB image V, Local Route R)-->UNet-->Path Graph P
+        ----------------------------------------------------------------------------
+        Input:
+        :param V,R:4D torch.tensor:4D torch.tensor(batch_size * 2RGB * Width * Height)
+        ----------------------------------------------------------------------------
+        Output:
+        :return P:Gray Picture of extraction from path,in order to create CostMap
+    """
+    def __init__(self, in_channels=5, out_channels=6, weather_num=10, scale=100):
+        super(UNetGenerator_Normal2, self).__init__()
+
+        self.normalize = nn.BatchNorm2d(num_features=in_channels)
+        self.scale = scale
+        self.unet = UNet(in_channels=in_channels, out_channels=out_channels, weather_num=weather_num)
+
+    def activate(self, r):
+        #         0              1               2          3                4   5
+        # r = [mean_radius, mean_reflectance, var_radius, var_reflectance, alpha]
+
+        alpha = nn.Sigmoid()(r[:,4,:,:])/self.scale
+        radius = nn.Sigmoid()(r[:,[0,2],:,:])*self.scale
+        reflectance = nn.Tanh()(r[:,[1,3],:,:])*self.scale
+
+        
+        return alpha,radius,reflectance
+
+    def merge(self, x, alpha, radius, reflectance):
+        #         0              1               2          3                4 
+        # x = [mean_radius, mean_reflectance, var_radius, var_reflectance, rho]
+        #                        0              1              
+        # radius      =  [mean_radius, var_radius]
+        # reflectance = [mean_reflectance, var_reflectance ]
+
+
+        mean_radius =  radius[:,0,:,:]*alpha + x[:,0,:,:]*(1-alpha)
+        mean_reflectance = x[:,1,:,:] + reflectance[:,0,:,:]
+
+        var_radius = alpha*radius[:,1,:,:] + (1-alpha)*x[:,2,:,:] + alpha*(1-alpha)*(radius[:,0,:,:]-x[:,0,:,:])*(radius[:,0,:,:]-x[:,0,:,:])
+        var_reflectance = x[:,3,:,:] + reflectance[:,1,:,:]
+        # rho = rho
+
+        z = torch.cat((mean_radius.unsqueeze(1), mean_reflectance.unsqueeze(1), var_radius.unsqueeze(1), var_reflectance.unsqueeze(1)), dim=1)
+        
+        return z
+
+    def forward(self, x, w):
+        '''
+        w batch_size*10
+        x batch_size*128*256
+        '''
+        # x = x[:,1:6,:,:]
+        x = self.normalize(x)
+        r = self.unet(x,w)
+
+        alpha,radius,reflectance = self.activate(r)
+
+        x = self.merge(x,alpha,radius,reflectance)
+
+        return x,(alpha,radius,reflectance)
     
 
 if __name__ == '__main__':
     g =  UNetGenerator_Normal()
-    img = torch.rand([32, 5, 128, 256])
+    img = torch.rand([32, 5, 64, 128])
     w = torch.rand([32, 10])
     r,x = g(img,w)
-    alpha,rho,others = x
+    alpha,rho,radius,reflectance = x
     # img.requires_grad = True
     # w.requires_grad = True
 
     print(r.size())
-    print(alpha.size())
-    print(rho.size())
-    print(others.size())
+    print(len(x))
 
-
-    # print(img)
+    

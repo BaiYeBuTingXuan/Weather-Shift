@@ -1,0 +1,15 @@
+[submodule "OpenPCDet"]
+	path = OpenPCDet
+	url = https://github.com/BaiYeBuTingXuan/OpenPCDet.git
+[submodule "SeeingThroughFog"]
+	path = SeeingThroughFog
+	url = https://github.com/BaiYeBuTingXuan/SeeingThroughFog.git
+[submodule "LiDAR_fog_sim"]
+	path = LiDAR_fog_sim
+	url = git@github.com:BaiYeBuTingXuan/LiDAR_fog_sim.git
+[submodule "app/LiDAR_sim_fog"]
+	path = app/LiDAR_sim_fog
+	url = git@github.com:BaiYeBuTingXuan/LiDAR_fog_sim.git
+[submodule "app/LiDAR_fog_sim"]
+	path = app/LiDAR_fog_sim
+	url = git@github.com:BaiYeBuTingXuan/LiDAR_fog_sim.git
