@@ -1,0 +1,15 @@
+METHOD:
+  - light_fog_day:
+    - Path: '/home/wanghejun/Desktop/wanghejun/WeatherShift/LiDAR_fog_sim'
+    - param:
+      - alpha
+      - beta
+      - gamma
+  - light_fog_day:
+    - Path: '/home/wanghejun/Desktop/wanghejun/WeatherShift/LiDAR_fog_sim'
+    - param:
+      - alpha
+      - beta
+      - gamma
+
+  - snow_day:

@@ -1,20 +1,25 @@
 {
-    "lidar_vlp32_strongest": {
-      "nested_key": "nested_value",
-      "latitude_n": 128,
-      "longitude_n": 256,
-      "latitude_bound": ["-30/180*PI", "10/180*PI"],
-      "longitude_bound": ["-PI", "PI"]
-    },
-    "lidar_hdl64_strongest": {
-      "nested_key": "nested_value",
-      "latitude_n": 128,
-      "longitude_n": 256,
-      "latitude_bound": ["-30/180*PI", "16/180*PI"],
-      "longitude_bound": ["-PI", "PI"]
-    }
+  "lidar_vlp32_strongest": {
+    "nested_key": "nested_value",
+    "latitude_n":64,
+    "longitude_n": 128,
+    "latitude_bound": ["-30/180*PI", "10/180*PI"],
+    "longitude_bound": ["-PI", "PI"]
+  },
+  "lidar_hdl64_strongest": {
+    "nested_key": "nested_value",
+    "latitude_n":64,
+    "longitude_n": 128,
+    "latitude_bound": ["-30/180*PI", "16/180*PI"],
+    "longitude_bound": ["-PI", "PI"]
+  },
+  "lidar_hdl64_last": {
+    "nested_key": "nested_value",
+    "latitude_n":64,
+    "longitude_n": 128,
+    "latitude_bound": ["-30/180*PI", "16/180*PI"],
+    "longitude_bound": ["-PI", "PI"]
+  }
 }
-  
-  
 
   

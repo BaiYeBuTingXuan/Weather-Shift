@@ -3,8 +3,9 @@
 # -*- coding: utf-8 -*-
 import glob
 import os
-import sys  
-sys.path.append('/home/wanghejun/Desktop/wanghejun/WeatherShift/Weather-Shift')
+import sys
+from os.path import join, dirname
+sys.path.insert(0, join(dirname(__file__), '..'))
 import random
 import numpy as np
 from PIL import Image
@@ -33,6 +34,7 @@ import itertools
 # parser.add_argument('--random_seed', type=int, default=6, help='random seed')
 # arg = parser.parse_args()
 
+WEATHERS = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night', 'None']
 
 def collate_fn(data):
     # print(collate_fn)
@@ -47,13 +49,13 @@ def collate_fn(data):
     return padded_data, lengths_tensor
 
 
-class SeeingThroughFogDataset(Dataset): #TODO: Undo almost anything
+class SeeingThroughFogDataset(Dataset):
     def __init__(self, 
                 dataset_path='I:\Datasets\DENSE\SeeingThroughFog', 
-                splits_path='.\splits', 
+                splits_path=r'./splits', 
                 mode = 'train',
-                globe_height = 128,
-                globe_width = 256,
+                globe_height = 64,
+                globe_width = 128,
                 weathers = ['clear_day' ,'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night'],
                 lidars = ['lidar_hdl64_strongest']): #  'lidar_vlp32_strongest'
         # self.data_index = data_index
@@ -69,9 +71,7 @@ class SeeingThroughFogDataset(Dataset): #TODO: Undo almost anything
         self.weather_categories = len(weathers)
 
         globe_transforms = [
-                # transforms.Resize((globe_height, globe_width), Image.BICUBIC),
                 transforms.ToTensor(),
-                transforms.Normalize((0.5), (0.5))
             ]
         if mode == 'train':
             globe_transforms.append(transforms.RandomHorizontalFlip(p=0.5))
@@ -95,40 +95,43 @@ class SeeingThroughFogDataset(Dataset): #TODO: Undo almost anything
         return cloud
 
     def read_globe(self, path):
-        if path.is_file():
-            image = cv2.imread(str(path))
-            # globe = np.fromfile(path, dtype=np.float32)
-            # globe = globe.reshape(self.height,self.width,3)
-            globe = globe.transpose(2,1,0)
+        globe = np.load(path)
+        globe = globe[:,:,0:4]
+        
+        # print(globe.shape)
+        # globe = globe.transpose(2,1,0)
+        if globe.shape == (self.height, self.width, 4):
+            pass
         else:
-            print_warning('Not Found: '+ path)
-            globe = None
+            globe = np.resize(globe, (self.height, self.width, 5))
+            print_warning('Shape of the globe is not ({self.height}, {self.width}, 5)')
+            print(str(path))
         return globe
 
     def __getitem__(self, index):
         # Read in Globe
         lidar = random.choice(self.lidars) # choice a lidar form lidars(LIST)
         weather_index = random.choice(range(self.weather_categories))
+        weather = self.weathers[weather_index]
         
-        globe_name = random.choice(self.npy_list[lidar][self.weathers[weather_index]])
+        globe_name = random.choice(self.npy_list[lidar][weather])
         
         GLOBE_PATH = Path(self.dataset_path).joinpath(lidar).joinpath(globe_name +'.npy')
         if GLOBE_PATH.is_file:
             globe = self.read_globe(GLOBE_PATH)
-            globe = Image.fromarray(globe)
+            # globe = Image.fromarray(globe)
             
         else:
             print_warning('NOT GET', str(GLOBE_PATH))
             return self.__getitem__(1)
-
+        
         # To Tensor
-        weather= torch.nn.functional.one_hot(torch.tensor(weather_index), num_classes=self.weather_categories+1).type(torch.float32)
-
-        print('1',globe.size)
+        # if weather == 'light_fog_night':
+            # print(weather)
+        weather_index_in_WEATHERS = WEATHERS.index(weather)
+        weather= torch.nn.functional.one_hot(torch.tensor(weather_index_in_WEATHERS), num_classes=len(WEATHERS)).type(torch.float32)
 
         globe = self.globe_transforms(globe)
-        print('2',globe.size())
-
 
         # TODO: labels for Object Detection
         if self.mode == 'train':
@@ -138,10 +141,139 @@ class SeeingThroughFogDataset(Dataset): #TODO: Undo almost anything
 
 
     def __len__(self):
-        length = 0
-        for lidar,weather in itertools.product(self.lidars, self.weathers):
-            length = length + len(self.npy_list[lidar][weather])
+        
+        if self.mode == 'valid':
+            length = 0
+            for lidar,weather in itertools.product(self.lidars, self.weathers):
+                length = length + len(self.npy_list[lidar][weather])
+        elif self.mode == 'train':
+            return 32*5000
+        else:
+            return 10000
         return length
+
+class SeeingThroughFogDataset2(Dataset):
+    def __init__(self, 
+                dataset_path='I:\Datasets\DENSE\SeeingThroughFog', 
+                splits_path=r'.\data/Dense/SeeingThroughFog/splits', 
+                mode = 'train',
+                globe_height = 64,
+                globe_width = 128,
+                src_weather = 'clear_day',
+                tgt_weathers = ['clear_day', 'clear_night' ,'dense_fog_day', 'dense_fog_night', 'light_fog_day', 'light_fog_night', 'rain', 'snow_day', 'snow_night'],
+                lidars = ['lidar_hdl64_strongest']): #  'lidar_vlp32_strongest'
+        # self.data_index = data_index
+        self.mode = mode
+        self.dataset_path = dataset_path
+        self.src_weather = src_weather
+        self.tgt_weathers = tgt_weathers
+
+        self.lidars = lidars
+        self.mode = mode
+        self.height = globe_height
+        self.width = globe_width
+
+
+        # self.weather_categories = len(weathers)
+
+        globe_transforms = [
+                transforms.ToTensor(),
+            ]
+        if mode == 'train':
+            globe_transforms.append(transforms.RandomHorizontalFlip(p=0.5))
+        else: # Test or Validation
+            pass
+        
+        self.globe_transforms = transforms.Compose(globe_transforms)
+
+        weathers = tgt_weathers[:]
+        if src_weather not in weathers:
+            weathers.append(src_weather)
+        # print(tgt_weathers)
+        self.npy_list = {} # self.bin_list[one of lidars][one of weathers] = one of names of globe in *.npy
+        for lidar,weather in itertools.product(lidars, weathers):
+            if lidar not in self.npy_list.keys():
+                self.npy_list[lidar] = {}
+            if weather == 'None':
+                self.npy_list[lidar]['None'] = []
+            else:
+                with open(Path(splits_path).joinpath(mode).joinpath(weather+'.txt')) as f:
+                    self.npy_list[lidar][weather] = [line.strip().replace(',', '_') for line in f.readlines()]
+
+    def read_cloud(self, path):
+        cloud = read_pcd(path)
+        return cloud
+
+    def read_globe(self, path):
+        globe = np.load(path)
+        # print(globe)
+        globe = globe[:,:,0:4]
+        # globe = globe.transpose(2,1,0)
+        if globe.shape == (self.height, self.width,4):
+            pass
+        else:
+            globe = np.resize(globe, (self.height, self.width, 5))
+            print_warning(f'Shape of the globe is not ({self.height}, {self.width}, 5)')
+            print(globe.shape)
+            print(str(path))
+
+        return globe
+
+    def __getitem__(self, index):
+        # Read in Globe
+        lidar = random.choice(self.lidars) # choice a lidar form lidars(LIST)
+
+        # scr_weather_index = random.choice(range(len(self.src_weathers)))
+        # scr_weather = self.weathers[weather_index]
+        
+        src_globe_name = random.choice(self.npy_list[lidar][self.src_weather])
+        
+        GLOBE_PATH = Path(self.dataset_path).joinpath(lidar).joinpath(src_globe_name +'.npy')
+        if GLOBE_PATH.is_file():
+            # print(GLOBE_PATH)
+            src_globe = self.read_globe(GLOBE_PATH)
+            # globe = Image.fromarray(globe)
+            
+        else:
+            print_warning('NOT GET' + str(GLOBE_PATH))
+            return self.__getitem__(1)
+        
+        tgt_weather_index = random.choice(range(len(self.tgt_weathers)))
+        tgt_weather = self.tgt_weathers[tgt_weather_index]
+        tgt_globe_name = random.choice(self.npy_list[lidar][tgt_weather])
+
+        GLOBE_PATH = Path(self.dataset_path).joinpath(lidar).joinpath(tgt_globe_name +'.npy')
+        if GLOBE_PATH.is_file:
+            tgt_globe = self.read_globe(GLOBE_PATH)
+        else:
+            print_warning('NOT GET', str(GLOBE_PATH))
+            return self.__getitem__(1)
+
+        # To Tensor
+        # if weather == 'light_fog_night':
+            # print(weather)
+        weather_index_in_WEATHERS = WEATHERS.index(tgt_weather)
+        weather= torch.nn.functional.one_hot(torch.tensor(weather_index_in_WEATHERS), num_classes=len(WEATHERS)).type(torch.float32)
+
+        src_globe = self.globe_transforms(src_globe)
+        tgt_globe = self.globe_transforms(tgt_globe)
+
+        # TODO: labels for Object Detection
+        if self.mode == 'train':
+            return {'source': src_globe, 'target': tgt_globe, 'weather': weather}
+        else: # Test or Validation
+            return {'source': src_globe, 'target': tgt_globe, 'weather': weather, 'lidar': lidar, 
+                    'src_globe_name': src_globe_name,  'tgt_globe_name': tgt_globe_name, 
+                    'tgt_weather_name': self.tgt_weathers[tgt_weather_index], 'tgt_weather_index': tgt_weather_index}
+
+
+    def __len__(self):
+        if self.mode == 'train':
+            return 32*5000
+        elif self.mode == 'test':
+            return 300
+        else:
+            return 1000
 
 
 if __name__ == '__main__':
@@ -170,3 +302,9 @@ if __name__ == '__main__':
         cnt+=1
         if cnt >= 5:
             break
+
+    # dataset = SeeingThroughFogDataset()
+    # p = Path(r'/home/wanghejun/Desktop/wanghejun/WeatherShift/main/data/Dense/SeeingThroughFog/globe/lidar_hdl64_strongest/2018-02-03_20-48-35_00400.npy')
+    # x = dataset.read_globe(path=p)
+    # print(x.shape)
+    # print(x.dtype)

@@ -9,9 +9,9 @@ from torch.autograd import Variable
 def weights_init(m):
     class_name = m.__class__.__name__
     if class_name.find('Conv') != -1:
-        torch.nn.init.normal_(m.weight.data, 0.0, 0.02)
+        torch.nn.init.normal_(m.weight.data, 0.0, 0.20)
     elif class_name.find('BatchNorm2d') != -1:
-        torch.nn.init.normal_(m.weight.data, 1.0, 0.02)
+        torch.nn.init.normal_(m.weight.data, 1.0, 0.20)
         torch.nn.init.constant_(m.bias.data, 0.0)
 
 
@@ -77,7 +77,7 @@ class WeatherClassifier(nn.Module):
         super(WeatherClassifier, self).__init__()
 
         # 定义Discriminator的单元结构
-        def discriminator_block(in_size, out_size, kernel_size=4, stride=2, padding=1, normalize=True, leaky=0.2, dropout=0.2, pooling=True):
+        def discriminator_block(in_size, out_size, kernel_size=4, stride=2, normalize=True, leaky=0.2, dropout=0.3, pooling=True):
             """Returns downsampling layers of each discriminator block"""
             layers = [PADCell()]
             layers.append(nn.Conv2d(in_size, out_size, kernel_size= kernel_size, stride=stride))
@@ -90,34 +90,135 @@ class WeatherClassifier(nn.Module):
                 layers.append(nn.MaxPool2d(kernel_size=4, stride=2, padding=1))
             return layers
         
-
-        self.feature_extracter = nn.Sequential(
-            *discriminator_block(in_channels, 64, normalize=False, pooling=False),
-            *discriminator_block(64, 128, pooling=False),
-            *discriminator_block(128, 256),
-            *discriminator_block(256, 512),
-            # nn.ZeroPad2d((0,0,1,0)),
-            nn.Conv2d(512, 256, kernel_size=(2,4), stride=1, padding=0, bias=False),
-            nn.Tanh(),
-            nn.Conv2d(256, 256, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.Tanh(),
-            nn.Conv2d(256, out_channel, kernel_size=1, stride=1, padding=0, bias=False)
+        self.block1 = nn.Sequential(
+            *discriminator_block(in_channels, 64, normalize=False, pooling=False)
         )
 
-        self.activation = nn.Softmax(dim=1)
+        self.block2 = nn.Sequential(
+            *discriminator_block(64, 128, pooling=False)
+        )
+
+        self.block3 = nn.Sequential(
+            *discriminator_block(128, 256)
+        )
+
+        self.block4 = nn.Sequential(
+            *discriminator_block(256, 512),
+        )
+
+        self.block5 = nn.Sequential(
+            # nn.ZeroPad2d((0,0,1,0)),
+            nn.Conv2d(512, 512, kernel_size=(2,4), stride=1, padding=0, bias=False),
+            nn.Tanh(),
+            nn.Conv2d(512, 512, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Tanh()
+        )
+
+        self.final = nn.Sequential(
+            nn.Linear(512, out_channel, bias=False),
+            nn.Softmax(dim=1)
+        )
 
     def forward(self, x):
-        print(x.size())
-        x = self.feature_extracter(x)
         batch_size, _, _, _ = x.size()
-        x = x.reshape(batch_size, -1)
-        x = self.activation(x)
-        return x
+
+        x1 = self.block1(x)
+        # print(x1.size())
+        x2 = self.block2(x1)
+        # print(x2.size())
+        x3 = self.block3(x2)
+        # print(x3.size())
+        x4 = self.block4(x3)
+        # print(x4.size())
+        x5 = self.block5(x4)
+        # print(x5.size())
+        x = x5.reshape(batch_size, -1)
+        # print(x.size())
+        x = self.final(x)
+
+        return x, [x1,x2,x3,x4,x5]
+    
+
+class WeatherClassifier2(nn.Module):
+    def __init__(self, in_channels=4, out_channel=9+1):
+        super(WeatherClassifier2, self).__init__()
+
+        # 定义Discriminator的单元结构
+        def discriminator_block(in_size, out_size, kernel_size=4, stride=2, normalize=True, leaky=0.2, dropout=0.3, pooling=True):
+            """Returns downsampling layers of each discriminator block"""
+            layers = [PADCell()]
+            layers.append(nn.Conv2d(in_size, out_size, kernel_size= kernel_size, stride=stride))
+            if normalize:
+                layers.append(nn.InstanceNorm2d(out_size))
+            layers.append(nn.LeakyReLU(leaky, inplace=True))
+            if dropout:
+                layers.append(nn.Dropout(dropout))
+            if pooling:
+                layers.append(nn.MaxPool2d(kernel_size=4, stride=2, padding=1))
+            return layers
+        
+        self.normalize = nn.BatchNorm2d(num_features=in_channels)
+
+        self.block1 = nn.Sequential(
+            *discriminator_block(in_channels, 64, normalize=False, pooling=False)
+        )
+
+        self.block2 = nn.Sequential(
+            *discriminator_block(64, 128, normalize=False, pooling=False)
+        )
+
+        self.block3 = nn.Sequential(
+            *discriminator_block(128, 256)
+        )
+
+        self.block4 = nn.Sequential(
+            *discriminator_block(256, 512),
+        )
+
+        self.block5 = nn.Sequential(
+            # nn.ZeroPad2d((0,0,1,0)),
+            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.Tanh(),
+            nn.Conv2d(512, 512, kernel_size=4, stride=2, padding=1, bias=False),
+            nn.Tanh(),
+            nn.Conv2d(512, 512, kernel_size=(2,4), stride=2, padding=1, bias=False),
+            # nn.Tanh(),
+            # nn.Conv2d(512, 512, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.Tanh()
+        )
+
+        self.final = nn.Sequential(
+            nn.Linear(1024, 512, bias=False),
+            nn.Tanh(),
+            nn.Linear(512, out_channel, bias=False),
+            nn.Softmax(dim=1)
+        )
+
+    def forward(self, x):
+        batch_size, _, _, _ = x.size()
+
+        x = self.normalize(x)
+
+        x1 = self.block1(x)
+        # print(x1.size())
+        x2 = self.block2(x1)
+        # print(x2.size())
+        x3 = self.block3(x2)
+        # print(x3.size())
+        x4 = self.block4(x3)
+        # print(x4.size())
+        # x5 = self.block5(x4)
+        # print(x5.size())
+        x = x4.reshape(batch_size, -1)
+
+        x = self.final(x)
+
+        return x, [x1,x2,x3,x4]
 
 
 if __name__ == '__main__':
-    img = torch.rand([32,3,128,256])
-    d = WeatherClassifier()
-    x = d(img)
+    img = torch.rand([32,5,64,128])
+    d = WeatherClassifier2()
+    x,_ = d(img)
     print(x.size())
     print("good！")
